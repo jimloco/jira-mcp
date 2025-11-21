@@ -14,6 +14,7 @@ from mcp.server.lowlevel import Server
 # Import managers
 from .workspace_manager import WorkspaceManager, WorkspaceError
 from .jira_client import JiraClient, JiraClientError
+from .issue_manager import IssueManager, IssueManagerError
 
 # Configure logging
 logger = logging.getLogger(__name__)
@@ -147,6 +148,82 @@ class JiraMCPServer:
                         },
                         "additionalProperties": False
                     }
+                ),
+                types.Tool(
+                    name="jira_issues",
+                    description=(
+                        "Perform Jira issue operations: search, create, read, update, assign, and transition issues.\n\n"
+                        "Core Operations:\n"
+                        "- search: Search issues using JQL (Jira Query Language)\n"
+                        "- read: Get full details of a specific issue\n"
+                        "- create: Create a new issue with fields\n"
+                        "- update: Update issue fields\n"
+                        "- assign: Assign issue to a user\n"
+                        "- transition: Move issue through workflow (e.g., 'To Do' → 'In Progress')\n"
+                        "- get_transitions: Get available transitions for an issue\n\n"
+                        "Use this tool for complete issue lifecycle management."
+                    ),
+                    inputSchema={
+                        "type": "object",
+                        "required": ["operation"],
+                        "properties": {
+                            "operation": {
+                                "type": "string",
+                                "enum": ["search", "read", "create", "update", "assign", "transition", "get_transitions"],
+                                "description": "Operation to perform"
+                            },
+                            "jql": {
+                                "type": "string",
+                                "description": "JQL query string (for search) - e.g., 'project = ENG AND status = Open'"
+                            },
+                            "issue_key": {
+                                "type": "string",
+                                "description": "Issue key (for read, update, assign, transition, get_transitions) - e.g., 'ENG-123'"
+                            },
+                            "project_key": {
+                                "type": "string",
+                                "description": "Project key (for create) - e.g., 'ENG'"
+                            },
+                            "summary": {
+                                "type": "string",
+                                "description": "Issue summary/title (for create, update)"
+                            },
+                            "description": {
+                                "type": "string",
+                                "description": "Issue description (for create, update)"
+                            },
+                            "issue_type": {
+                                "type": "string",
+                                "description": "Issue type name (for create) - e.g., 'Task', 'Bug', 'Story'"
+                            },
+                            "assignee": {
+                                "type": "string",
+                                "description": "Assignee account ID or username (for create, update, assign)"
+                            },
+                            "priority": {
+                                "type": "string",
+                                "description": "Priority name (for create, update) - e.g., 'High', 'Medium', 'Low'"
+                            },
+                            "labels": {
+                                "type": "array",
+                                "items": {"type": "string"},
+                                "description": "List of labels (for create, update)"
+                            },
+                            "transition": {
+                                "type": "string",
+                                "description": "Transition name or ID (for transition) - e.g., 'In Progress', 'Done'"
+                            },
+                            "comment": {
+                                "type": "string",
+                                "description": "Optional comment (for transition)"
+                            },
+                            "max_results": {
+                                "type": "integer",
+                                "description": "Maximum number of results (for search). Default: 50"
+                            }
+                        },
+                        "additionalProperties": False
+                    }
                 )
             ]
 
@@ -188,13 +265,17 @@ class JiraMCPServer:
         if name == "jira_projects":
             return await self._route_projects_operation(arguments)
 
+        # Handle jira_issues tool
+        if name == "jira_issues":
+            return await self._route_issues_operation(arguments)
+
         # Unknown tool
         return [
             types.TextContent(
                 type="text",
                 text=(
                     f"❌ **Unknown Tool**: '{name}'\n\n"
-                    "✅ **Available tools**: jira_workspace, jira_projects"
+                    "✅ **Available tools**: jira_workspace, jira_projects, jira_issues"
                 ),
             )
         ]
@@ -986,6 +1067,514 @@ class JiraMCPServer:
                 )
             ]
 
+    async def _route_issues_operation(
+        self, arguments: Dict[str, Any]
+    ) -> List[types.TextContent]:
+        """Route jira_issues operations to appropriate handlers."""
+        operation = arguments.get("operation")
+        if not operation:
+            return [
+                types.TextContent(
+                    type="text",
+                    text=(
+                        "❌ **Parameter Error**: Missing required parameter 'operation'\n\n"
+                        "Available operations: search, read, create, update, assign, transition, get_transitions"
+                    )
+                )
+            ]
+
+        # Route to handlers
+        if operation == "search":
+            return await self._handle_search_issues(arguments)
+        if operation == "read":
+            return await self._handle_read_issue(arguments)
+        if operation == "create":
+            return await self._handle_create_issue(arguments)
+        if operation == "update":
+            return await self._handle_update_issue(arguments)
+        if operation == "assign":
+            return await self._handle_assign_issue(arguments)
+        if operation == "transition":
+            return await self._handle_transition_issue(arguments)
+        if operation == "get_transitions":
+            return await self._handle_get_transitions(arguments)
+
+        return [
+            types.TextContent(
+                type="text",
+                text=f"❌ **Invalid Operation**: '{operation}'\n\n"
+                     "Available operations: search, read, create, update, assign, transition, get_transitions"
+            )
+        ]
+
+    async def _handle_search_issues(self, arguments: Dict[str, Any]) -> List[types.TextContent]:
+        """Handle search issues operation."""
+        jql = arguments.get("jql")
+        if not jql:
+            return [
+                types.TextContent(
+                    type="text",
+                    text=(
+                        "❌ **Missing Required Parameter**: jql\n\n"
+                        "Example: jira_issues(operation=\"search\", jql=\"project = ENG AND status = Open\")"
+                    )
+                )
+            ]
+
+        max_results = arguments.get("max_results", 50)
+
+        try:
+            credentials = self.workspace_manager.get_workspace_credentials()
+            jira_client = JiraClient(
+                credentials['site_url'],
+                credentials['email'],
+                credentials['api_token']
+            )
+
+            issue_manager = IssueManager(jira_client.jira, credentials['site_url'])
+            issues = issue_manager.search_issues(jql, max_results)
+
+            if not issues:
+                return [
+                    types.TextContent(
+                        type="text",
+                        text=f"ℹ️ **No issues found**\n\nJQL: `{jql}`"
+                    )
+                ]
+
+            # Format issue list
+            result_lines = [f"🔍 **Search Results**\n\nJQL: `{jql}`\n"]
+
+            for issue in issues:
+                status_emoji = "✓" if issue['status'] == "Done" else "○"
+                result_lines.append(f"{status_emoji} **{issue['key']}**: {issue['summary']}")
+                result_lines.append(f"  └─ Status: {issue['status']}")
+                result_lines.append(f"  └─ Type: {issue['issue_type']}")
+                if issue['assignee']:
+                    result_lines.append(f"  └─ Assignee: {issue['assignee']['name']}")
+                result_lines.append(f"  └─ URL: {issue['url']}")
+                result_lines.append("")
+
+            result_lines.append(f"**Total results**: {len(issues)}")
+
+            return [
+                types.TextContent(
+                    type="text",
+                    text="\n".join(result_lines)
+                )
+            ]
+
+        except (WorkspaceError, JiraClientError, IssueManagerError) as error:
+            return [
+                types.TextContent(
+                    type="text",
+                    text=f"❌ **Error**: {str(error)}"
+                )
+            ]
+        except Exception as error:
+            logger.error("Error searching issues: %s", error)
+            return [
+                types.TextContent(
+                    type="text",
+                    text=f"❌ **Error**: {str(error)}"
+                )
+            ]
+
+    async def _handle_read_issue(self, arguments: Dict[str, Any]) -> List[types.TextContent]:
+        """Handle read issue operation."""
+        issue_key = arguments.get("issue_key")
+        if not issue_key:
+            return [
+                types.TextContent(
+                    type="text",
+                    text=(
+                        "❌ **Missing Required Parameter**: issue_key\n\n"
+                        "Example: jira_issues(operation=\"read\", issue_key=\"ENG-123\")"
+                    )
+                )
+            ]
+
+        try:
+            credentials = self.workspace_manager.get_workspace_credentials()
+            jira_client = JiraClient(
+                credentials['site_url'],
+                credentials['email'],
+                credentials['api_token']
+            )
+
+            issue_manager = IssueManager(jira_client.jira, credentials['site_url'])
+            issue = issue_manager.get_issue(issue_key)
+
+            # Format issue details
+            result = (
+                f"📋 **{issue['key']}**: {issue['summary']}\n\n"
+                f"**Status**: {issue['status']}\n"
+                f"**Type**: {issue['issue_type']}\n"
+                f"**Project**: {issue['project']}\n"
+                f"**Priority**: {issue['priority'] or 'None'}\n"
+                f"**Assignee**: {issue['assignee']['name'] if issue['assignee'] else 'Unassigned'}\n"
+                f"**Reporter**: {issue['reporter']['name'] if issue['reporter'] else 'Unknown'}\n"
+                f"**Created**: {issue['created']}\n"
+                f"**Updated**: {issue['updated']}\n\n"
+                f"**Description**:\n{issue.get('description', 'No description')}\n\n"
+            )
+
+            if issue.get('labels'):
+                result += f"**Labels**: {', '.join(issue['labels'])}\n"
+
+            if issue.get('components'):
+                result += f"**Components**: {', '.join(issue['components'])}\n"
+
+            result += f"\n**URL**: {issue['url']}"
+
+            return [
+                types.TextContent(
+                    type="text",
+                    text=result
+                )
+            ]
+
+        except (WorkspaceError, JiraClientError, IssueManagerError) as error:
+            return [
+                types.TextContent(
+                    type="text",
+                    text=f"❌ **Error**: {str(error)}"
+                )
+            ]
+        except Exception as error:
+            logger.error("Error reading issue: %s", error)
+            return [
+                types.TextContent(
+                    type="text",
+                    text=f"❌ **Error**: {str(error)}"
+                )
+            ]
+
+    async def _handle_create_issue(self, arguments: Dict[str, Any]) -> List[types.TextContent]:
+        """Handle create issue operation."""
+        project_key = arguments.get("project_key")
+        summary = arguments.get("summary")
+        issue_type = arguments.get("issue_type")
+
+        if not project_key or not summary or not issue_type:
+            return [
+                types.TextContent(
+                    type="text",
+                    text=(
+                        "❌ **Missing Required Parameters**: project_key, summary, issue_type\n\n"
+                        "Example: jira_issues(operation=\"create\", project_key=\"ENG\", "
+                        "summary=\"Fix bug\", issue_type=\"Bug\")"
+                    )
+                )
+            ]
+
+        try:
+            credentials = self.workspace_manager.get_workspace_credentials()
+            jira_client = JiraClient(
+                credentials['site_url'],
+                credentials['email'],
+                credentials['api_token']
+            )
+
+            issue_manager = IssueManager(jira_client.jira, credentials['site_url'])
+
+            # Extract optional fields
+            description = arguments.get("description")
+            assignee = arguments.get("assignee")
+            priority = arguments.get("priority")
+            labels = arguments.get("labels")
+
+            issue = issue_manager.create_issue(
+                project_key=project_key,
+                summary=summary,
+                issue_type=issue_type,
+                description=description,
+                assignee=assignee,
+                priority=priority,
+                labels=labels
+            )
+
+            result = (
+                f"✅ **Issue Created**: {issue['key']}\n\n"
+                f"**Summary**: {issue['summary']}\n"
+                f"**Type**: {issue['issue_type']}\n"
+                f"**Status**: {issue['status']}\n"
+                f"**Project**: {issue['project']}\n"
+                f"**URL**: {issue['url']}"
+            )
+
+            return [
+                types.TextContent(
+                    type="text",
+                    text=result
+                )
+            ]
+
+        except (WorkspaceError, JiraClientError, IssueManagerError) as error:
+            return [
+                types.TextContent(
+                    type="text",
+                    text=f"❌ **Error**: {str(error)}"
+                )
+            ]
+        except Exception as error:
+            logger.error("Error creating issue: %s", error)
+            return [
+                types.TextContent(
+                    type="text",
+                    text=f"❌ **Error**: {str(error)}"
+                )
+            ]
+
+    async def _handle_update_issue(self, arguments: Dict[str, Any]) -> List[types.TextContent]:
+        """Handle update issue operation."""
+        issue_key = arguments.get("issue_key")
+        if not issue_key:
+            return [
+                types.TextContent(
+                    type="text",
+                    text=(
+                        "❌ **Missing Required Parameter**: issue_key\n\n"
+                        "Example: jira_issues(operation=\"update\", issue_key=\"ENG-123\", "
+                        "summary=\"Updated summary\")"
+                    )
+                )
+            ]
+
+        try:
+            credentials = self.workspace_manager.get_workspace_credentials()
+            jira_client = JiraClient(
+                credentials['site_url'],
+                credentials['email'],
+                credentials['api_token']
+            )
+
+            issue_manager = IssueManager(jira_client.jira, credentials['site_url'])
+
+            # Extract optional update fields
+            summary = arguments.get("summary")
+            description = arguments.get("description")
+            assignee = arguments.get("assignee")
+            priority = arguments.get("priority")
+            labels = arguments.get("labels")
+
+            issue = issue_manager.update_issue(
+                issue_key=issue_key,
+                summary=summary,
+                description=description,
+                assignee=assignee,
+                priority=priority,
+                labels=labels
+            )
+
+            result = (
+                f"✅ **Issue Updated**: {issue['key']}\n\n"
+                f"**Summary**: {issue['summary']}\n"
+                f"**Status**: {issue['status']}\n"
+                f"**URL**: {issue['url']}"
+            )
+
+            return [
+                types.TextContent(
+                    type="text",
+                    text=result
+                )
+            ]
+
+        except (WorkspaceError, JiraClientError, IssueManagerError) as error:
+            return [
+                types.TextContent(
+                    type="text",
+                    text=f"❌ **Error**: {str(error)}"
+                )
+            ]
+        except Exception as error:
+            logger.error("Error updating issue: %s", error)
+            return [
+                types.TextContent(
+                    type="text",
+                    text=f"❌ **Error**: {str(error)}"
+                )
+            ]
+
+    async def _handle_assign_issue(self, arguments: Dict[str, Any]) -> List[types.TextContent]:
+        """Handle assign issue operation."""
+        issue_key = arguments.get("issue_key")
+        assignee = arguments.get("assignee")
+
+        if not issue_key or not assignee:
+            return [
+                types.TextContent(
+                    type="text",
+                    text=(
+                        "❌ **Missing Required Parameters**: issue_key, assignee\n\n"
+                        "Example: jira_issues(operation=\"assign\", issue_key=\"ENG-123\", "
+                        "assignee=\"user@example.com\")"
+                    )
+                )
+            ]
+
+        try:
+            credentials = self.workspace_manager.get_workspace_credentials()
+            jira_client = JiraClient(
+                credentials['site_url'],
+                credentials['email'],
+                credentials['api_token']
+            )
+
+            issue_manager = IssueManager(jira_client.jira, credentials['site_url'])
+            issue = issue_manager.assign_issue(issue_key, assignee)
+
+            result = (
+                f"✅ **Issue Assigned**: {issue['key']}\n\n"
+                f"**Assignee**: {issue['assignee']['name'] if issue['assignee'] else 'Unassigned'}\n"
+                f"**URL**: {issue['url']}"
+            )
+
+            return [
+                types.TextContent(
+                    type="text",
+                    text=result
+                )
+            ]
+
+        except (WorkspaceError, JiraClientError, IssueManagerError) as error:
+            return [
+                types.TextContent(
+                    type="text",
+                    text=f"❌ **Error**: {str(error)}"
+                )
+            ]
+        except Exception as error:
+            logger.error("Error assigning issue: %s", error)
+            return [
+                types.TextContent(
+                    type="text",
+                    text=f"❌ **Error**: {str(error)}"
+                )
+            ]
+
+    async def _handle_transition_issue(self, arguments: Dict[str, Any]) -> List[types.TextContent]:
+        """Handle transition issue operation."""
+        issue_key = arguments.get("issue_key")
+        transition = arguments.get("transition")
+
+        if not issue_key or not transition:
+            return [
+                types.TextContent(
+                    type="text",
+                    text=(
+                        "❌ **Missing Required Parameters**: issue_key, transition\n\n"
+                        "Example: jira_issues(operation=\"transition\", issue_key=\"ENG-123\", "
+                        "transition=\"In Progress\")"
+                    )
+                )
+            ]
+
+        try:
+            credentials = self.workspace_manager.get_workspace_credentials()
+            jira_client = JiraClient(
+                credentials['site_url'],
+                credentials['email'],
+                credentials['api_token']
+            )
+
+            issue_manager = IssueManager(jira_client.jira, credentials['site_url'])
+            comment = arguments.get("comment")
+
+            issue = issue_manager.transition_issue(issue_key, transition, comment)
+
+            result = (
+                f"✅ **Issue Transitioned**: {issue['key']}\n\n"
+                f"**New Status**: {issue['status']}\n"
+                f"**URL**: {issue['url']}"
+            )
+
+            return [
+                types.TextContent(
+                    type="text",
+                    text=result
+                )
+            ]
+
+        except (WorkspaceError, JiraClientError, IssueManagerError) as error:
+            return [
+                types.TextContent(
+                    type="text",
+                    text=f"❌ **Error**: {str(error)}"
+                )
+            ]
+        except Exception as error:
+            logger.error("Error transitioning issue: %s", error)
+            return [
+                types.TextContent(
+                    type="text",
+                    text=f"❌ **Error**: {str(error)}"
+                )
+            ]
+
+    async def _handle_get_transitions(self, arguments: Dict[str, Any]) -> List[types.TextContent]:
+        """Handle get transitions operation."""
+        issue_key = arguments.get("issue_key")
+        if not issue_key:
+            return [
+                types.TextContent(
+                    type="text",
+                    text=(
+                        "❌ **Missing Required Parameter**: issue_key\n\n"
+                        "Example: jira_issues(operation=\"get_transitions\", issue_key=\"ENG-123\")"
+                    )
+                )
+            ]
+
+        try:
+            credentials = self.workspace_manager.get_workspace_credentials()
+            jira_client = JiraClient(
+                credentials['site_url'],
+                credentials['email'],
+                credentials['api_token']
+            )
+
+            issue_manager = IssueManager(jira_client.jira, credentials['site_url'])
+            transitions = issue_manager.get_transitions(issue_key)
+
+            if not transitions:
+                return [
+                    types.TextContent(
+                        type="text",
+                        text=f"ℹ️ **No transitions available** for {issue_key}"
+                    )
+                ]
+
+            # Format transitions list
+            result_lines = [f"🔄 **Available Transitions for {issue_key}**\n"]
+
+            for trans in transitions:
+                result_lines.append(f"- **{trans['name']}** (ID: {trans['id']})")
+
+            return [
+                types.TextContent(
+                    type="text",
+                    text="\n".join(result_lines)
+                )
+            ]
+
+        except (WorkspaceError, JiraClientError, IssueManagerError) as error:
+            return [
+                types.TextContent(
+                    type="text",
+                    text=f"❌ **Error**: {str(error)}"
+                )
+            ]
+        except Exception as error:
+            logger.error("Error getting transitions: %s", error)
+            return [
+                types.TextContent(
+                    type="text",
+                    text=f"❌ **Error**: {str(error)}"
+                )
+            ]
+
     def get_server_info(self) -> Dict[str, Any]:
         """
         Get server information.
@@ -996,5 +1585,5 @@ class JiraMCPServer:
         return {
             "server_name": self.server_name,
             "server_version": self.server_version,
-            "registered_tools": ["jira_workspace", "jira_projects"]
+            "registered_tools": ["jira_workspace", "jira_projects", "jira_issues"]
         }
