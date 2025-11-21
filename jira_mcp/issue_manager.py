@@ -753,6 +753,240 @@ class IssueManager:
             logger.error("❌ %s", error_msg)
             raise IssueManagerError(error_msg) from e
 
+    def create_link(
+        self,
+        inward_issue: str,
+        outward_issue: str,
+        link_type: str = "Relates"
+    ) -> Dict[str, Any]:
+        """
+        Create a link between two issues.
+
+        Args:
+            inward_issue: Inward issue key (e.g., 'PROJ-123')
+            outward_issue: Outward issue key (e.g., 'PROJ-456')
+            link_type: Link type name (e.g., 'Relates', 'Blocks', 'Duplicate')
+
+        Returns:
+            Link creation result
+
+        Raises:
+            IssueManagerError: If link creation fails
+        """
+        try:
+            logger.info("Creating link: %s %s %s", inward_issue, link_type, outward_issue)
+
+            self.jira.create_issue_link(
+                type=link_type,
+                inwardIssue=inward_issue,
+                outwardIssue=outward_issue
+            )
+
+            result = {
+                'inward_issue': inward_issue,
+                'outward_issue': outward_issue,
+                'link_type': link_type
+            }
+
+            logger.info("✅ Created link between %s and %s", inward_issue, outward_issue)
+            return result
+
+        except JIRAError as e:
+            error_msg = f"Failed to create link: {e.text if hasattr(e, 'text') else str(e)}"
+            logger.error("❌ %s", error_msg)
+            raise IssueManagerError(error_msg) from e
+        except Exception as e:
+            error_msg = f"Unexpected error creating link: {str(e)}"
+            logger.error("❌ %s", error_msg)
+            raise IssueManagerError(error_msg) from e
+
+    def delete_link(self, link_id: str) -> None:
+        """
+        Delete an issue link.
+
+        Args:
+            link_id: Link ID to delete
+
+        Raises:
+            IssueManagerError: If link deletion fails
+        """
+        try:
+            logger.info("Deleting link: %s", link_id)
+
+            link = self.jira.issue_link(link_id)
+            link.delete()
+
+            logger.info("✅ Deleted link %s", link_id)
+
+        except JIRAError as e:
+            error_msg = f"Failed to delete link {link_id}: {e.text if hasattr(e, 'text') else str(e)}"
+            logger.error("❌ %s", error_msg)
+            raise IssueManagerError(error_msg) from e
+        except Exception as e:
+            error_msg = f"Unexpected error deleting link: {str(e)}"
+            logger.error("❌ %s", error_msg)
+            raise IssueManagerError(error_msg) from e
+
+    def list_links(self, issue_key: str) -> List[Dict[str, Any]]:
+        """
+        Get all issue links for an issue.
+
+        Args:
+            issue_key: Issue key (e.g., 'PROJ-123')
+
+        Returns:
+            List of link dictionaries
+
+        Raises:
+            IssueManagerError: If retrieval fails
+        """
+        try:
+            logger.info("Getting links for issue: %s", issue_key)
+
+            issue = self.jira.issue(issue_key)
+            issue_links = issue.fields.issuelinks
+
+            link_list = []
+            for link in issue_links:
+                link_data = {
+                    'id': link.id,
+                    'type': link.type.name
+                }
+
+                # Determine if this is an inward or outward link
+                if hasattr(link, 'outwardIssue'):
+                    link_data['direction'] = 'outward'
+                    link_data['related_issue'] = link.outwardIssue.key
+                    link_data['related_summary'] = link.outwardIssue.fields.summary
+                elif hasattr(link, 'inwardIssue'):
+                    link_data['direction'] = 'inward'
+                    link_data['related_issue'] = link.inwardIssue.key
+                    link_data['related_summary'] = link.inwardIssue.fields.summary
+
+                link_list.append(link_data)
+
+            logger.info("Found %d links", len(link_list))
+            return link_list
+
+        except JIRAError as e:
+            error_msg = f"Failed to get links for {issue_key}: {e.text if hasattr(e, 'text') else str(e)}"
+            logger.error("❌ %s", error_msg)
+            raise IssueManagerError(error_msg) from e
+        except Exception as e:
+            error_msg = f"Unexpected error getting links: {str(e)}"
+            logger.error("❌ %s", error_msg)
+            raise IssueManagerError(error_msg) from e
+
+    def create_subtask(
+        self,
+        parent_key: str,
+        summary: str,
+        description: Optional[str] = None,
+        assignee: Optional[str] = None
+    ) -> Dict[str, Any]:
+        """
+        Create a subtask under a parent issue.
+
+        Args:
+            parent_key: Parent issue key (e.g., 'PROJ-123')
+            summary: Subtask summary/title
+            description: Optional subtask description
+            assignee: Optional assignee account ID
+
+        Returns:
+            Created subtask dictionary
+
+        Raises:
+            IssueManagerError: If subtask creation fails
+        """
+        try:
+            logger.info("Creating subtask under %s: %s", parent_key, summary)
+
+            # Get parent issue to extract project
+            parent_issue = self.jira.issue(parent_key)
+            project_key = parent_issue.fields.project.key
+
+            # Build subtask fields
+            fields = {
+                'project': {'key': project_key},
+                'summary': summary,
+                'issuetype': {'name': 'Sub-task'},
+                'parent': {'key': parent_key}
+            }
+
+            if description:
+                fields['description'] = description
+
+            if assignee:
+                fields['assignee'] = {'accountId': assignee}
+
+            # Create the subtask
+            subtask = self.jira.create_issue(fields=fields)
+
+            logger.info("✅ Created subtask: %s", subtask.key)
+            return self._format_issue(subtask, full_details=True)
+
+        except JIRAError as e:
+            error_msg = f"Failed to create subtask: {e.text if hasattr(e, 'text') else str(e)}"
+            logger.error("❌ %s", error_msg)
+            raise IssueManagerError(error_msg) from e
+        except Exception as e:
+            error_msg = f"Unexpected error creating subtask: {str(e)}"
+            logger.error("❌ %s", error_msg)
+            raise IssueManagerError(error_msg) from e
+
+    def list_subtasks(self, issue_key: str) -> List[Dict[str, Any]]:
+        """
+        Get all subtasks for an issue.
+
+        Args:
+            issue_key: Parent issue key (e.g., 'PROJ-123')
+
+        Returns:
+            List of subtask dictionaries
+
+        Raises:
+            IssueManagerError: If retrieval fails
+        """
+        try:
+            logger.info("Getting subtasks for issue: %s", issue_key)
+
+            issue = self.jira.issue(issue_key)
+            subtasks = getattr(issue.fields, 'subtasks', [])
+
+            subtask_list = []
+            for subtask in subtasks:
+                subtask_data = {
+                    'key': subtask.key,
+                    'id': subtask.id,
+                    'summary': subtask.fields.summary,
+                    'status': subtask.fields.status.name,
+                    'url': f"{self.site_url}/browse/{subtask.key}"
+                }
+
+                # Add assignee if present
+                if hasattr(subtask.fields, 'assignee') and subtask.fields.assignee:
+                    subtask_data['assignee'] = {
+                        'name': subtask.fields.assignee.displayName,
+                        'account_id': subtask.fields.assignee.accountId
+                    }
+                else:
+                    subtask_data['assignee'] = None
+
+                subtask_list.append(subtask_data)
+
+            logger.info("Found %d subtasks", len(subtask_list))
+            return subtask_list
+
+        except JIRAError as e:
+            error_msg = f"Failed to get subtasks for {issue_key}: {e.text if hasattr(e, 'text') else str(e)}"
+            logger.error("❌ %s", error_msg)
+            raise IssueManagerError(error_msg) from e
+        except Exception as e:
+            error_msg = f"Unexpected error getting subtasks: {str(e)}"
+            logger.error("❌ %s", error_msg)
+            raise IssueManagerError(error_msg) from e
+
     def __repr__(self) -> str:
         """String representation of IssueManager."""
         return f"IssueManager(site_url='{self.site_url}')"

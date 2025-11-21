@@ -170,6 +170,13 @@ class JiraMCPServer:
                         "- list_attachments: Get all attachments on an issue\n"
                         "- add_attachment: Upload a file attachment to an issue\n"
                         "- delete_attachment: Remove an attachment\n\n"
+                        "Link Operations:\n"
+                        "- create_link: Link two issues with a relationship type\n"
+                        "- delete_link: Remove a link between issues\n"
+                        "- list_links: Get all links for an issue\n\n"
+                        "Subtask Operations:\n"
+                        "- create_subtask: Create a subtask under a parent issue\n"
+                        "- list_subtasks: Get all subtasks for an issue\n\n"
                         "Use this tool for complete issue lifecycle management."
                     ),
                     inputSchema={
@@ -182,7 +189,8 @@ class JiraMCPServer:
                                     "search", "read", "create", "update", "assign", "transition",
                                     "get_transitions", "list_comments", "add_comment",
                                     "update_comment", "delete_comment", "list_attachments",
-                                    "add_attachment", "delete_attachment"
+                                    "add_attachment", "delete_attachment", "create_link",
+                                    "delete_link", "list_links", "create_subtask", "list_subtasks"
                                 ],
                                 "description": "Operation to perform"
                             },
@@ -250,6 +258,26 @@ class JiraMCPServer:
                             "attachment_id": {
                                 "type": "string",
                                 "description": "Attachment ID (for delete_attachment)"
+                            },
+                            "inward_issue": {
+                                "type": "string",
+                                "description": "Inward issue key (for create_link) - e.g., 'ENG-123'"
+                            },
+                            "outward_issue": {
+                                "type": "string",
+                                "description": "Outward issue key (for create_link) - e.g., 'ENG-456'"
+                            },
+                            "link_type": {
+                                "type": "string",
+                                "description": "Link type (for create_link) - e.g., 'Relates', 'Blocks', 'Duplicate'. Default: 'Relates'"
+                            },
+                            "link_id": {
+                                "type": "string",
+                                "description": "Link ID (for delete_link)"
+                            },
+                            "parent_key": {
+                                "type": "string",
+                                "description": "Parent issue key (for create_subtask) - e.g., 'ENG-123'"
                             }
                         },
                         "additionalProperties": False
@@ -1110,7 +1138,8 @@ class JiraMCPServer:
                         "❌ **Parameter Error**: Missing required parameter 'operation'\n\n"
                         "Available operations: search, read, create, update, assign, transition, get_transitions, "
                         "list_comments, add_comment, update_comment, delete_comment, "
-                        "list_attachments, add_attachment, delete_attachment"
+                        "list_attachments, add_attachment, delete_attachment, "
+                        "create_link, delete_link, list_links, create_subtask, list_subtasks"
                     )
                 )
             ]
@@ -1144,6 +1173,16 @@ class JiraMCPServer:
             return await self._handle_add_attachment(arguments)
         if operation == "delete_attachment":
             return await self._handle_delete_attachment(arguments)
+        if operation == "create_link":
+            return await self._handle_create_link(arguments)
+        if operation == "delete_link":
+            return await self._handle_delete_link(arguments)
+        if operation == "list_links":
+            return await self._handle_list_links(arguments)
+        if operation == "create_subtask":
+            return await self._handle_create_subtask(arguments)
+        if operation == "list_subtasks":
+            return await self._handle_list_subtasks(arguments)
 
         return [
             types.TextContent(
@@ -1151,7 +1190,8 @@ class JiraMCPServer:
                 text=f"❌ **Invalid Operation**: '{operation}'\n\n"
                      "Available operations: search, read, create, update, assign, transition, get_transitions, "
                      "list_comments, add_comment, update_comment, delete_comment, "
-                     "list_attachments, add_attachment, delete_attachment"
+                     "list_attachments, add_attachment, delete_attachment, "
+                     "create_link, delete_link, list_links, create_subtask, list_subtasks"
             )
         ]
 
@@ -2044,6 +2084,325 @@ class JiraMCPServer:
             ]
         except Exception as error:
             logger.error("Error deleting attachment: %s", error)
+            return [
+                types.TextContent(
+                    type="text",
+                    text=f"❌ **Error**: {str(error)}"
+                )
+            ]
+
+    async def _handle_create_link(self, arguments: Dict[str, Any]) -> List[types.TextContent]:
+        """Handle create link operation."""
+        inward_issue = arguments.get("inward_issue")
+        outward_issue = arguments.get("outward_issue")
+        link_type = arguments.get("link_type", "Relates")
+
+        if not inward_issue or not outward_issue:
+            return [
+                types.TextContent(
+                    type="text",
+                    text=(
+                        "❌ **Missing Required Parameters**: inward_issue, outward_issue\n\n"
+                        "Example: jira_issues(operation=\"create_link\", inward_issue=\"ENG-123\", "
+                        "outward_issue=\"ENG-456\", link_type=\"Relates\")"
+                    )
+                )
+            ]
+
+        try:
+            credentials = self.workspace_manager.get_workspace_credentials()
+            jira_client = JiraClient(
+                credentials['site_url'],
+                credentials['email'],
+                credentials['api_token']
+            )
+
+            issue_manager = IssueManager(jira_client.jira, credentials['site_url'])
+            link = issue_manager.create_link(inward_issue, outward_issue, link_type)
+
+            result = (
+                f"✅ **Link Created**\n\n"
+                f"**Inward Issue**: {link['inward_issue']}\n"
+                f"**Outward Issue**: {link['outward_issue']}\n"
+                f"**Link Type**: {link['link_type']}"
+            )
+
+            return [
+                types.TextContent(
+                    type="text",
+                    text=result
+                )
+            ]
+
+        except (WorkspaceError, JiraClientError, IssueManagerError) as error:
+            return [
+                types.TextContent(
+                    type="text",
+                    text=f"❌ **Error**: {str(error)}"
+                )
+            ]
+        except Exception as error:
+            logger.error("Error creating link: %s", error)
+            return [
+                types.TextContent(
+                    type="text",
+                    text=f"❌ **Error**: {str(error)}"
+                )
+            ]
+
+    async def _handle_delete_link(self, arguments: Dict[str, Any]) -> List[types.TextContent]:
+        """Handle delete link operation."""
+        link_id = arguments.get("link_id")
+
+        if not link_id:
+            return [
+                types.TextContent(
+                    type="text",
+                    text=(
+                        "❌ **Missing Required Parameter**: link_id\n\n"
+                        "Example: jira_issues(operation=\"delete_link\", link_id=\"12345\")"
+                    )
+                )
+            ]
+
+        try:
+            credentials = self.workspace_manager.get_workspace_credentials()
+            jira_client = JiraClient(
+                credentials['site_url'],
+                credentials['email'],
+                credentials['api_token']
+            )
+
+            issue_manager = IssueManager(jira_client.jira, credentials['site_url'])
+            issue_manager.delete_link(link_id)
+
+            result = (
+                f"✅ **Link Deleted**\n\n"
+                f"**Link ID**: {link_id}"
+            )
+
+            return [
+                types.TextContent(
+                    type="text",
+                    text=result
+                )
+            ]
+
+        except (WorkspaceError, JiraClientError, IssueManagerError) as error:
+            return [
+                types.TextContent(
+                    type="text",
+                    text=f"❌ **Error**: {str(error)}"
+                )
+            ]
+        except Exception as error:
+            logger.error("Error deleting link: %s", error)
+            return [
+                types.TextContent(
+                    type="text",
+                    text=f"❌ **Error**: {str(error)}"
+                )
+            ]
+
+    async def _handle_list_links(self, arguments: Dict[str, Any]) -> List[types.TextContent]:
+        """Handle list links operation."""
+        issue_key = arguments.get("issue_key")
+        if not issue_key:
+            return [
+                types.TextContent(
+                    type="text",
+                    text=(
+                        "❌ **Missing Required Parameter**: issue_key\n\n"
+                        "Example: jira_issues(operation=\"list_links\", issue_key=\"ENG-123\")"
+                    )
+                )
+            ]
+
+        try:
+            credentials = self.workspace_manager.get_workspace_credentials()
+            jira_client = JiraClient(
+                credentials['site_url'],
+                credentials['email'],
+                credentials['api_token']
+            )
+
+            issue_manager = IssueManager(jira_client.jira, credentials['site_url'])
+            links = issue_manager.list_links(issue_key)
+
+            if not links:
+                return [
+                    types.TextContent(
+                        type="text",
+                        text=f"ℹ️ **No links** on {issue_key}"
+                    )
+                ]
+
+            # Format links list
+            result_lines = [f"🔗 **Links on {issue_key}**\n"]
+
+            for link in links:
+                result_lines.append(f"**{link['type']}** ({link['direction']}) - ID: {link['id']}")
+                result_lines.append(f"  └─ Related Issue: {link['related_issue']}")
+                result_lines.append(f"  └─ Summary: {link['related_summary']}")
+                result_lines.append("")
+
+            result_lines.append(f"**Total links**: {len(links)}")
+
+            return [
+                types.TextContent(
+                    type="text",
+                    text="\n".join(result_lines)
+                )
+            ]
+
+        except (WorkspaceError, JiraClientError, IssueManagerError) as error:
+            return [
+                types.TextContent(
+                    type="text",
+                    text=f"❌ **Error**: {str(error)}"
+                )
+            ]
+        except Exception as error:
+            logger.error("Error listing links: %s", error)
+            return [
+                types.TextContent(
+                    type="text",
+                    text=f"❌ **Error**: {str(error)}"
+                )
+            ]
+
+    async def _handle_create_subtask(self, arguments: Dict[str, Any]) -> List[types.TextContent]:
+        """Handle create subtask operation."""
+        parent_key = arguments.get("parent_key")
+        summary = arguments.get("summary")
+
+        if not parent_key or not summary:
+            return [
+                types.TextContent(
+                    type="text",
+                    text=(
+                        "❌ **Missing Required Parameters**: parent_key, summary\n\n"
+                        "Example: jira_issues(operation=\"create_subtask\", parent_key=\"ENG-123\", "
+                        "summary=\"Subtask title\")"
+                    )
+                )
+            ]
+
+        try:
+            credentials = self.workspace_manager.get_workspace_credentials()
+            jira_client = JiraClient(
+                credentials['site_url'],
+                credentials['email'],
+                credentials['api_token']
+            )
+
+            issue_manager = IssueManager(jira_client.jira, credentials['site_url'])
+
+            # Extract optional fields
+            description = arguments.get("description")
+            assignee = arguments.get("assignee")
+
+            subtask = issue_manager.create_subtask(
+                parent_key=parent_key,
+                summary=summary,
+                description=description,
+                assignee=assignee
+            )
+
+            result = (
+                f"✅ **Subtask Created**: {subtask['key']}\n\n"
+                f"**Summary**: {subtask['summary']}\n"
+                f"**Parent**: {parent_key}\n"
+                f"**Status**: {subtask['status']}\n"
+                f"**URL**: {subtask['url']}"
+            )
+
+            return [
+                types.TextContent(
+                    type="text",
+                    text=result
+                )
+            ]
+
+        except (WorkspaceError, JiraClientError, IssueManagerError) as error:
+            return [
+                types.TextContent(
+                    type="text",
+                    text=f"❌ **Error**: {str(error)}"
+                )
+            ]
+        except Exception as error:
+            logger.error("Error creating subtask: %s", error)
+            return [
+                types.TextContent(
+                    type="text",
+                    text=f"❌ **Error**: {str(error)}"
+                )
+            ]
+
+    async def _handle_list_subtasks(self, arguments: Dict[str, Any]) -> List[types.TextContent]:
+        """Handle list subtasks operation."""
+        issue_key = arguments.get("issue_key")
+        if not issue_key:
+            return [
+                types.TextContent(
+                    type="text",
+                    text=(
+                        "❌ **Missing Required Parameter**: issue_key\n\n"
+                        "Example: jira_issues(operation=\"list_subtasks\", issue_key=\"ENG-123\")"
+                    )
+                )
+            ]
+
+        try:
+            credentials = self.workspace_manager.get_workspace_credentials()
+            jira_client = JiraClient(
+                credentials['site_url'],
+                credentials['email'],
+                credentials['api_token']
+            )
+
+            issue_manager = IssueManager(jira_client.jira, credentials['site_url'])
+            subtasks = issue_manager.list_subtasks(issue_key)
+
+            if not subtasks:
+                return [
+                    types.TextContent(
+                        type="text",
+                        text=f"ℹ️ **No subtasks** on {issue_key}"
+                    )
+                ]
+
+            # Format subtasks list
+            result_lines = [f"📋 **Subtasks of {issue_key}**\n"]
+
+            for subtask in subtasks:
+                status_emoji = "✓" if subtask['status'] == "Done" else "○"
+                result_lines.append(f"{status_emoji} **{subtask['key']}**: {subtask['summary']}")
+                result_lines.append(f"  └─ Status: {subtask['status']}")
+                if subtask['assignee']:
+                    result_lines.append(f"  └─ Assignee: {subtask['assignee']['name']}")
+                result_lines.append(f"  └─ URL: {subtask['url']}")
+                result_lines.append("")
+
+            result_lines.append(f"**Total subtasks**: {len(subtasks)}")
+
+            return [
+                types.TextContent(
+                    type="text",
+                    text="\n".join(result_lines)
+                )
+            ]
+
+        except (WorkspaceError, JiraClientError, IssueManagerError) as error:
+            return [
+                types.TextContent(
+                    type="text",
+                    text=f"❌ **Error**: {str(error)}"
+                )
+            ]
+        except Exception as error:
+            logger.error("Error listing subtasks: %s", error)
             return [
                 types.TextContent(
                     type="text",
