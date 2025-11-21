@@ -152,7 +152,7 @@ class JiraMCPServer:
                 types.Tool(
                     name="jira_issues",
                     description=(
-                        "Perform Jira issue operations: search, create, read, update, assign, and transition issues.\n\n"
+                        "Perform Jira issue operations: search, create, read, update, assign, transition, and manage comments.\n\n"
                         "Core Operations:\n"
                         "- search: Search issues using JQL (Jira Query Language)\n"
                         "- read: Get full details of a specific issue\n"
@@ -161,6 +161,11 @@ class JiraMCPServer:
                         "- assign: Assign issue to a user\n"
                         "- transition: Move issue through workflow (e.g., 'To Do' → 'In Progress')\n"
                         "- get_transitions: Get available transitions for an issue\n\n"
+                        "Comment Operations:\n"
+                        "- list_comments: Get all comments on an issue\n"
+                        "- add_comment: Add a new comment to an issue\n"
+                        "- update_comment: Update an existing comment\n"
+                        "- delete_comment: Delete a comment\n\n"
                         "Use this tool for complete issue lifecycle management."
                     ),
                     inputSchema={
@@ -169,7 +174,11 @@ class JiraMCPServer:
                         "properties": {
                             "operation": {
                                 "type": "string",
-                                "enum": ["search", "read", "create", "update", "assign", "transition", "get_transitions"],
+                                "enum": [
+                                    "search", "read", "create", "update", "assign", "transition",
+                                    "get_transitions", "list_comments", "add_comment",
+                                    "update_comment", "delete_comment"
+                                ],
                                 "description": "Operation to perform"
                             },
                             "jql": {
@@ -220,6 +229,14 @@ class JiraMCPServer:
                             "max_results": {
                                 "type": "integer",
                                 "description": "Maximum number of results (for search). Default: 50"
+                            },
+                            "body": {
+                                "type": "string",
+                                "description": "Comment text body (for add_comment, update_comment)"
+                            },
+                            "comment_id": {
+                                "type": "string",
+                                "description": "Comment ID (for update_comment, delete_comment)"
                             }
                         },
                         "additionalProperties": False
@@ -1078,7 +1095,8 @@ class JiraMCPServer:
                     type="text",
                     text=(
                         "❌ **Parameter Error**: Missing required parameter 'operation'\n\n"
-                        "Available operations: search, read, create, update, assign, transition, get_transitions"
+                        "Available operations: search, read, create, update, assign, transition, get_transitions, "
+                        "list_comments, add_comment, update_comment, delete_comment"
                     )
                 )
             ]
@@ -1098,12 +1116,21 @@ class JiraMCPServer:
             return await self._handle_transition_issue(arguments)
         if operation == "get_transitions":
             return await self._handle_get_transitions(arguments)
+        if operation == "list_comments":
+            return await self._handle_list_comments(arguments)
+        if operation == "add_comment":
+            return await self._handle_add_comment(arguments)
+        if operation == "update_comment":
+            return await self._handle_update_comment(arguments)
+        if operation == "delete_comment":
+            return await self._handle_delete_comment(arguments)
 
         return [
             types.TextContent(
                 type="text",
                 text=f"❌ **Invalid Operation**: '{operation}'\n\n"
-                     "Available operations: search, read, create, update, assign, transition, get_transitions"
+                     "Available operations: search, read, create, update, assign, transition, get_transitions, "
+                     "list_comments, add_comment, update_comment, delete_comment"
             )
         ]
 
@@ -1568,6 +1595,249 @@ class JiraMCPServer:
             ]
         except Exception as error:
             logger.error("Error getting transitions: %s", error)
+            return [
+                types.TextContent(
+                    type="text",
+                    text=f"❌ **Error**: {str(error)}"
+                )
+            ]
+
+    async def _handle_list_comments(self, arguments: Dict[str, Any]) -> List[types.TextContent]:
+        """Handle list comments operation."""
+        issue_key = arguments.get("issue_key")
+        if not issue_key:
+            return [
+                types.TextContent(
+                    type="text",
+                    text=(
+                        "❌ **Missing Required Parameter**: issue_key\n\n"
+                        "Example: jira_issues(operation=\"list_comments\", issue_key=\"ENG-123\")"
+                    )
+                )
+            ]
+
+        try:
+            credentials = self.workspace_manager.get_workspace_credentials()
+            jira_client = JiraClient(
+                credentials['site_url'],
+                credentials['email'],
+                credentials['api_token']
+            )
+
+            issue_manager = IssueManager(jira_client.jira, credentials['site_url'])
+            comments = issue_manager.list_comments(issue_key)
+
+            if not comments:
+                return [
+                    types.TextContent(
+                        type="text",
+                        text=f"ℹ️ **No comments** on {issue_key}"
+                    )
+                ]
+
+            # Format comments list
+            result_lines = [f"💬 **Comments on {issue_key}**\n"]
+
+            for comment in comments:
+                result_lines.append(f"**Comment {comment['id']}** by {comment['author']['name']}")
+                result_lines.append(f"  └─ Created: {comment['created']}")
+                result_lines.append(f"  └─ Updated: {comment['updated']}")
+                result_lines.append(f"  └─ Body: {comment['body'][:200]}{'...' if len(comment['body']) > 200 else ''}")
+                result_lines.append("")
+
+            result_lines.append(f"**Total comments**: {len(comments)}")
+
+            return [
+                types.TextContent(
+                    type="text",
+                    text="\n".join(result_lines)
+                )
+            ]
+
+        except (WorkspaceError, JiraClientError, IssueManagerError) as error:
+            return [
+                types.TextContent(
+                    type="text",
+                    text=f"❌ **Error**: {str(error)}"
+                )
+            ]
+        except Exception as error:
+            logger.error("Error listing comments: %s", error)
+            return [
+                types.TextContent(
+                    type="text",
+                    text=f"❌ **Error**: {str(error)}"
+                )
+            ]
+
+    async def _handle_add_comment(self, arguments: Dict[str, Any]) -> List[types.TextContent]:
+        """Handle add comment operation."""
+        issue_key = arguments.get("issue_key")
+        body = arguments.get("body")
+
+        if not issue_key or not body:
+            return [
+                types.TextContent(
+                    type="text",
+                    text=(
+                        "❌ **Missing Required Parameters**: issue_key, body\n\n"
+                        "Example: jira_issues(operation=\"add_comment\", issue_key=\"ENG-123\", "
+                        "body=\"This is my comment\")"
+                    )
+                )
+            ]
+
+        try:
+            credentials = self.workspace_manager.get_workspace_credentials()
+            jira_client = JiraClient(
+                credentials['site_url'],
+                credentials['email'],
+                credentials['api_token']
+            )
+
+            issue_manager = IssueManager(jira_client.jira, credentials['site_url'])
+            comment = issue_manager.add_comment(issue_key, body)
+
+            result = (
+                f"✅ **Comment Added** to {issue_key}\n\n"
+                f"**Comment ID**: {comment['id']}\n"
+                f"**Author**: {comment['author']['name']}\n"
+                f"**Created**: {comment['created']}\n"
+                f"**Body**: {comment['body']}"
+            )
+
+            return [
+                types.TextContent(
+                    type="text",
+                    text=result
+                )
+            ]
+
+        except (WorkspaceError, JiraClientError, IssueManagerError) as error:
+            return [
+                types.TextContent(
+                    type="text",
+                    text=f"❌ **Error**: {str(error)}"
+                )
+            ]
+        except Exception as error:
+            logger.error("Error adding comment: %s", error)
+            return [
+                types.TextContent(
+                    type="text",
+                    text=f"❌ **Error**: {str(error)}"
+                )
+            ]
+
+    async def _handle_update_comment(self, arguments: Dict[str, Any]) -> List[types.TextContent]:
+        """Handle update comment operation."""
+        issue_key = arguments.get("issue_key")
+        comment_id = arguments.get("comment_id")
+        body = arguments.get("body")
+
+        if not issue_key or not comment_id or not body:
+            return [
+                types.TextContent(
+                    type="text",
+                    text=(
+                        "❌ **Missing Required Parameters**: issue_key, comment_id, body\n\n"
+                        "Example: jira_issues(operation=\"update_comment\", issue_key=\"ENG-123\", "
+                        "comment_id=\"12345\", body=\"Updated comment text\")"
+                    )
+                )
+            ]
+
+        try:
+            credentials = self.workspace_manager.get_workspace_credentials()
+            jira_client = JiraClient(
+                credentials['site_url'],
+                credentials['email'],
+                credentials['api_token']
+            )
+
+            issue_manager = IssueManager(jira_client.jira, credentials['site_url'])
+            comment = issue_manager.update_comment(issue_key, comment_id, body)
+
+            result = (
+                f"✅ **Comment Updated** on {issue_key}\n\n"
+                f"**Comment ID**: {comment['id']}\n"
+                f"**Author**: {comment['author']['name']}\n"
+                f"**Updated**: {comment['updated']}\n"
+                f"**Body**: {comment['body']}"
+            )
+
+            return [
+                types.TextContent(
+                    type="text",
+                    text=result
+                )
+            ]
+
+        except (WorkspaceError, JiraClientError, IssueManagerError) as error:
+            return [
+                types.TextContent(
+                    type="text",
+                    text=f"❌ **Error**: {str(error)}"
+                )
+            ]
+        except Exception as error:
+            logger.error("Error updating comment: %s", error)
+            return [
+                types.TextContent(
+                    type="text",
+                    text=f"❌ **Error**: {str(error)}"
+                )
+            ]
+
+    async def _handle_delete_comment(self, arguments: Dict[str, Any]) -> List[types.TextContent]:
+        """Handle delete comment operation."""
+        issue_key = arguments.get("issue_key")
+        comment_id = arguments.get("comment_id")
+
+        if not issue_key or not comment_id:
+            return [
+                types.TextContent(
+                    type="text",
+                    text=(
+                        "❌ **Missing Required Parameters**: issue_key, comment_id\n\n"
+                        "Example: jira_issues(operation=\"delete_comment\", issue_key=\"ENG-123\", "
+                        "comment_id=\"12345\")"
+                    )
+                )
+            ]
+
+        try:
+            credentials = self.workspace_manager.get_workspace_credentials()
+            jira_client = JiraClient(
+                credentials['site_url'],
+                credentials['email'],
+                credentials['api_token']
+            )
+
+            issue_manager = IssueManager(jira_client.jira, credentials['site_url'])
+            issue_manager.delete_comment(issue_key, comment_id)
+
+            result = (
+                f"✅ **Comment Deleted** from {issue_key}\n\n"
+                f"**Comment ID**: {comment_id}"
+            )
+
+            return [
+                types.TextContent(
+                    type="text",
+                    text=result
+                )
+            ]
+
+        except (WorkspaceError, JiraClientError, IssueManagerError) as error:
+            return [
+                types.TextContent(
+                    type="text",
+                    text=f"❌ **Error**: {str(error)}"
+                )
+            ]
+        except Exception as error:
+            logger.error("Error deleting comment: %s", error)
             return [
                 types.TextContent(
                     type="text",

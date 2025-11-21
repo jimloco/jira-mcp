@@ -459,6 +459,174 @@ class IssueManager:
 
         return issue_data
 
+    def list_comments(self, issue_key: str) -> List[Dict[str, Any]]:
+        """
+        Get all comments for an issue.
+
+        Args:
+            issue_key: Issue key (e.g., 'PROJ-123')
+
+        Returns:
+            List of comment dictionaries
+
+        Raises:
+            IssueManagerError: If retrieval fails
+        """
+        try:
+            logger.info("Getting comments for issue: %s", issue_key)
+
+            issue = self.jira.issue(issue_key)
+            comments = issue.fields.comment.comments
+
+            comment_list = []
+            for comment in comments:
+                comment_data = {
+                    'id': comment.id,
+                    'body': comment.body,
+                    'author': {
+                        'name': comment.author.displayName,
+                        'account_id': comment.author.accountId
+                    },
+                    'created': str(comment.created),
+                    'updated': str(comment.updated)
+                }
+                comment_list.append(comment_data)
+
+            logger.info("Found %d comments", len(comment_list))
+            return comment_list
+
+        except JIRAError as e:
+            error_msg = f"Failed to get comments for {issue_key}: {e.text if hasattr(e, 'text') else str(e)}"
+            logger.error("❌ %s", error_msg)
+            raise IssueManagerError(error_msg) from e
+        except Exception as e:
+            error_msg = f"Unexpected error getting comments: {str(e)}"
+            logger.error("❌ %s", error_msg)
+            raise IssueManagerError(error_msg) from e
+
+    def add_comment(self, issue_key: str, body: str) -> Dict[str, Any]:
+        """
+        Add a comment to an issue.
+
+        Args:
+            issue_key: Issue key (e.g., 'PROJ-123')
+            body: Comment text
+
+        Returns:
+            Created comment dictionary
+
+        Raises:
+            IssueManagerError: If comment creation fails
+        """
+        try:
+            logger.info("Adding comment to issue: %s", issue_key)
+
+            issue = self.jira.issue(issue_key)
+            comment = self.jira.add_comment(issue, body)
+
+            comment_data = {
+                'id': comment.id,
+                'body': comment.body,
+                'author': {
+                    'name': comment.author.displayName,
+                    'account_id': comment.author.accountId
+                },
+                'created': str(comment.created),
+                'updated': str(comment.updated)
+            }
+
+            logger.info("✅ Added comment to %s", issue_key)
+            return comment_data
+
+        except JIRAError as e:
+            error_msg = f"Failed to add comment to {issue_key}: {e.text if hasattr(e, 'text') else str(e)}"
+            logger.error("❌ %s", error_msg)
+            raise IssueManagerError(error_msg) from e
+        except Exception as e:
+            error_msg = f"Unexpected error adding comment: {str(e)}"
+            logger.error("❌ %s", error_msg)
+            raise IssueManagerError(error_msg) from e
+
+    def update_comment(
+        self,
+        issue_key: str,
+        comment_id: str,
+        body: str
+    ) -> Dict[str, Any]:
+        """
+        Update an existing comment.
+
+        Args:
+            issue_key: Issue key (e.g., 'PROJ-123')
+            comment_id: Comment ID to update
+            body: New comment text
+
+        Returns:
+            Updated comment dictionary
+
+        Raises:
+            IssueManagerError: If comment update fails
+        """
+        try:
+            logger.info("Updating comment %s on issue %s", comment_id, issue_key)
+
+            comment = self.jira.comment(issue_key, comment_id)
+            comment.update(body=body)
+
+            # Refresh comment to get updated data
+            comment = self.jira.comment(issue_key, comment_id)
+
+            comment_data = {
+                'id': comment.id,
+                'body': comment.body,
+                'author': {
+                    'name': comment.author.displayName,
+                    'account_id': comment.author.accountId
+                },
+                'created': str(comment.created),
+                'updated': str(comment.updated)
+            }
+
+            logger.info("✅ Updated comment %s", comment_id)
+            return comment_data
+
+        except JIRAError as e:
+            error_msg = f"Failed to update comment {comment_id}: {e.text if hasattr(e, 'text') else str(e)}"
+            logger.error("❌ %s", error_msg)
+            raise IssueManagerError(error_msg) from e
+        except Exception as e:
+            error_msg = f"Unexpected error updating comment: {str(e)}"
+            logger.error("❌ %s", error_msg)
+            raise IssueManagerError(error_msg) from e
+
+    def delete_comment(self, issue_key: str, comment_id: str) -> None:
+        """
+        Delete a comment from an issue.
+
+        Args:
+            issue_key: Issue key (e.g., 'PROJ-123')
+            comment_id: Comment ID to delete
+
+        Raises:
+            IssueManagerError: If comment deletion fails
+        """
+        try:
+            logger.info("Deleting comment %s from issue %s", comment_id, issue_key)
+
+            comment = self.jira.comment(issue_key, comment_id)
+            comment.delete()
+
+            logger.info("✅ Deleted comment %s", comment_id)
+
+        except JIRAError as e:
+            error_msg = f"Failed to delete comment {comment_id}: {e.text if hasattr(e, 'text') else str(e)}"
+            logger.error("❌ %s", error_msg)
+            raise IssueManagerError(error_msg) from e
+        except Exception as e:
+            error_msg = f"Unexpected error deleting comment: {str(e)}"
+            logger.error("❌ %s", error_msg)
+            raise IssueManagerError(error_msg) from e
+
     def __repr__(self) -> str:
         """String representation of IssueManager."""
         return f"IssueManager(site_url='{self.site_url}')"
