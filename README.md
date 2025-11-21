@@ -29,7 +29,7 @@ cd /Users/jhull/workarea/jira-mcp
 poetry install
 
 # Run the MCP server
-poetry run jira-mcp
+poetry run start-mcp
 ```
 
 ## Configuration

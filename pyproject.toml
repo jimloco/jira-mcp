@@ -33,7 +33,7 @@ pytest-cov = "^4.1.0"
 mypy = "^1.5.0"
 
 [tool.poetry.scripts]
-jira-mcp = "jira_mcp.__main__:run_main"
+start-mcp = "jira_mcp.__main__:run_main"
 
 [build-system]
 requires = ["poetry-core"]

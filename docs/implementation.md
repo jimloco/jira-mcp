@@ -286,7 +286,7 @@ A Model Context Protocol (MCP) server that provides AI assistants with direct ac
 - `jira_mcp/jira_client.py` (237 lines) - Jira API client wrapper
 - `jira_mcp/mcp_server.py` (732 lines) - MCP server with jira_workspace tool
 
-**Server Ready For Testing:** Run `poetry run jira-mcp` to start the MCP server
+**Server Ready For Testing:** Run `poetry run start-mcp` to start the MCP server
 
 ### Phase 3: jira_projects Tool
 - [ ] Define jira_projects tool schema
