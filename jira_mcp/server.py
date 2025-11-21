@@ -20,9 +20,7 @@ logger = logging.getLogger("jira-mcp")
 # Add project root to Python path to import config
 sys.path.insert(0, str(Path(__file__).parent.parent))
 from jira_mcp.config import load_config  # pylint: disable=wrong-import-position
-
-# Placeholder import - will be implemented in Phase 4
-# from .mcp_server import JiraMCPServer  # pylint: disable=wrong-import-position
+from jira_mcp.mcp_server import JiraMCPServer  # pylint: disable=wrong-import-position
 
 
 # Signal handlers for graceful shutdown
@@ -49,7 +47,7 @@ async def run():
     """
     try:
         logger.info("🚀 Initializing Jira MCP Server")
-        logger.info("Phase 1: Project Bootstrap & Infrastructure")
+        logger.info("Phase 2: MCP Server + Workspace Management")
 
         # Check for multi-workspace mode
         active_workspace_file = Path('.env.active')
@@ -75,37 +73,27 @@ async def run():
         config = load_config(workspace_name=active_workspace)
         logger.info("✅ Configuration loaded successfully")
 
-        # TODO: Phase 4 - Initialize MCP server
-        # mcp_server = JiraMCPServer(config)
-        # mcp_server.register_tools()
+        # Initialize MCP server
+        mcp_server = JiraMCPServer(config)
+        mcp_server.register_tools()
         
-        # server_info = mcp_server.get_server_info()
-        # logger.info(
-        #     "✅ MCP Server initialized: %s v%s",
-        #     server_info["server_name"],
-        #     server_info["server_version"],
-        # )
-        # logger.info("🔧 Registered tools: %s", ", ".join(server_info["registered_tools"]))
-
-        # Temporary placeholder for Phase 1
-        logger.info("✅ MCP Server initialized: jira-mcp v0.1.0")
-        logger.info("⚠️  MCP tools not yet registered (Phase 4)")
+        server_info = mcp_server.get_server_info()
+        logger.info(
+            "✅ MCP Server initialized: %s v%s",
+            server_info["server_name"],
+            server_info["server_version"],
+        )
+        logger.info("🔧 Registered tools: %s", ", ".join(server_info["registered_tools"]))
 
         # Start MCP server with STDIO transport
         logger.info("📡 Starting MCP server with STDIO transport")
         logger.info("🔗 Server ready for AI assistant connections")
         logger.info("💡 Use Ctrl+C to stop the server")
 
-        # TODO: Phase 4 - Uncomment when mcp_server is implemented
-        # async with stdio_server() as streams:
-        #     await mcp_server.app.run(
-        #         streams[0], streams[1], mcp_server.app.create_initialization_options()
-        #     )
-        
-        # Temporary: Keep server running for testing
-        logger.info("⚠️  Server running in bootstrap mode (Phase 1)")
-        logger.info("⚠️  STDIO transport not yet connected - implement in Phase 4")
-        await asyncio.sleep(3600)  # Keep alive for 1 hour
+        async with stdio_server() as streams:
+            await mcp_server.app.run(
+                streams[0], streams[1], mcp_server.app.create_initialization_options()
+            )
 
     except KeyboardInterrupt:
         logger.info("👋 MCP server stopped by user")
