@@ -6,9 +6,9 @@
 
 ## Project Status
 
-**Current Phase:** Phase 4 Complete ✅ - Core Tools Implemented  
+**Current Phase:** Phase 5 Complete ✅ - Comments Implemented  
 **Last Updated:** November 21, 2025  
-**Git Commit:** `c7b0336` on `main` branch
+**Git Commit:** `d51da8b` on `main` branch
 
 ### Completed Milestones
 - ✅ **Phase 1: Project Bootstrap & Infrastructure** (Nov 20, 2025)
@@ -38,12 +38,17 @@
   - JQL search integration
   - Issue creation, updates, assignments, and transitions
 
+- ✅ **Phase 5: jira_issues Comments** (Nov 21, 2025)
+  - Added 4 comment operations to jira_issues tool
+  - Full comment CRUD (list, add, update, delete)
+  - Comment management with author tracking
+
 ### Current Status
-- **All Core Tools Complete** ✅
-- 3 tools implemented: `jira_workspace` (9 operations), `jira_projects` (3 operations), `jira_issues` (7 operations)
-- Total: 19 operations across 3 MCP tools
-- Complete Jira integration for AI assistants
-- Optional: Phase 5 (Comments) and Phase 6 (Attachments) for extended functionality
+- **Core + Comments Complete** ✅
+- 3 tools implemented: `jira_workspace` (9 operations), `jira_projects` (3 operations), `jira_issues` (11 operations)
+- Total: 23 operations across 3 MCP tools
+- Complete Jira integration for AI assistants with comment support
+- Optional: Phase 6 (Attachments) for file management
 
 ## Overview
 
@@ -342,11 +347,24 @@ A Model Context Protocol (MCP) server that provides AI assistants with direct ac
 **Files Created:**
 - `jira_mcp/issue_manager.py` (465 lines) - Complete issue lifecycle management
 
-### Phase 5: jira_issues Comments
-- [ ] Implement list_comments
-- [ ] Implement add_comment
-- [ ] Implement update_comment
-- [ ] Implement delete_comment
+### Phase 5: jira_issues Comments ✅ **COMPLETED**
+- [x] Implement list_comments
+- [x] Implement add_comment
+- [x] Implement update_comment
+- [x] Implement delete_comment
+
+**Status:** Committed and pushed to `rosebud:/var/lib/git/jira-mcp` (commit `d51da8b`)  
+**Date Completed:** November 21, 2025
+
+**Operations Added:**
+- `list_comments` - Get all comments on an issue
+- `add_comment` - Add new comment with body text
+- `update_comment` - Update existing comment
+- `delete_comment` - Remove comment from issue
+
+**Code Added:**
+- 168 lines in `issue_manager.py`
+- 242 lines in `mcp_server.py`
 
 ### Phase 6: jira_issues Attachments
 - [ ] Implement list_attachments
