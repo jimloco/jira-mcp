@@ -54,17 +54,17 @@ async def run():
         active_workspace = None
         if active_workspace_file.exists():
             try:
-                active_workspace = active_workspace_file.read_text().strip()
+                active_workspace = active_workspace_file.read_text(encoding='utf-8').strip()
                 if active_workspace:
-                    logger.info(f"🔑 Multi-workspace mode: Using workspace '{active_workspace}'")
+                    logger.info("🔑 Multi-workspace mode: Using workspace '%s'", active_workspace)
             except (OSError, IOError) as e:
-                logger.warning(f"Could not read .env.active: {e}")
-        
+                logger.warning("Could not read .env.active: %s", e)
+
         # Load environment variables (with workspace-specific file if needed)
         if active_workspace:
             env_file = f'.env.{active_workspace}'
             load_dotenv(env_file)
-            logger.debug(f"Environment variables loaded from {env_file}")
+            logger.debug("Environment variables loaded from %s", env_file)
         else:
             load_dotenv()
             logger.debug("Environment variables loaded from .env file")
@@ -76,7 +76,7 @@ async def run():
         # Initialize MCP server
         mcp_server = JiraMCPServer(config)
         mcp_server.register_tools()
-        
+
         server_info = mcp_server.get_server_info()
         logger.info(
             "✅ MCP Server initialized: %s v%s",

@@ -39,7 +39,7 @@ class ConfigManager:
     def __init__(self, workspace_name: Optional[str] = None):
         """
         Initialize configuration manager.
-        
+
         Args:
             workspace_name: Optional workspace name for multi-workspace support.
                            If provided, loads .env.{workspace_name} instead of .env
@@ -71,7 +71,7 @@ class ConfigManager:
 def load_config(workspace_name: Optional[str] = None) -> Dict[str, str]:
     """
     Convenience function to load configuration for application use.
-    
+
     Args:
         workspace_name: Optional workspace name for multi-workspace support
 
@@ -87,7 +87,7 @@ def load_config(workspace_name: Optional[str] = None) -> Dict[str, str]:
     if not config_manager.env_file_path.exists():
         logger.warning("⚠️  No .env file found - using default configuration")
         logger.warning("⚠️  Configure workspaces using jira_workspace(operation='add_workspace')")
-        
+
         # Return default configuration for Phase 1
         return {
             'MCP_SERVER_NAME': 'jira-mcp',
@@ -95,16 +95,16 @@ def load_config(workspace_name: Optional[str] = None) -> Dict[str, str]:
             'DEBUG': 'false'
         }
 
-    config = config_manager.load_existing_env()
+    env_config = config_manager.load_existing_env()
 
     # Convert None values to empty strings for application use
-    return {k: v or '' for k, v in config.items()}
+    return {k: v or '' for k, v in env_config.items()}
 
 
 def get_default_config() -> Dict[str, str]:
     """
     Get default configuration values.
-    
+
     Returns:
         Dictionary with default configuration
     """

@@ -33,19 +33,19 @@ class WorkspaceManager:
         # Workspace storage paths
         self.accounts_dir = Path('accounts')
         self.active_workspace_file = Path('.env.active')
-        
+
         # Workspace registry (workspace_name -> metadata)
         self._workspace_registry: Dict[str, Dict[str, Any]] = {}
-        
+
         # Active workspace state
         self._active_workspace_name: Optional[str] = None
-        
+
         # Ensure accounts directory exists
         self.accounts_dir.mkdir(exist_ok=True)
-        
+
         # Load workspace registry
         self._load_workspace_registry()
-        
+
         # Load active workspace
         self._load_active_workspace()
 
@@ -66,11 +66,11 @@ class WorkspaceManager:
         """
         if not workspace_name:
             return False
-        
+
         # Check length
         if not 1 <= len(workspace_name) <= 50:
             return False
-        
+
         # Check format: alphanumeric and dashes only
         pattern = r'^[a-zA-Z0-9]([a-zA-Z0-9-]*[a-zA-Z0-9])?$'
         return bool(re.match(pattern, workspace_name))
@@ -90,18 +90,18 @@ class WorkspaceManager:
         """
         if not site_url:
             raise WorkspaceError("Site URL cannot be empty")
-        
+
         # Remove trailing slashes
         site_url = site_url.rstrip('/')
-        
+
         # If no protocol, assume https
         if not site_url.startswith(('http://', 'https://')):
             site_url = f'https://{site_url}'
-        
+
         # Validate it looks like an Atlassian URL
         if '.atlassian.net' not in site_url:
-            logger.warning(f"Site URL doesn't contain .atlassian.net: {site_url}")
-        
+            logger.warning("Site URL doesn't contain .atlassian.net: %s", site_url)
+
         return site_url
 
     def add_workspace(
@@ -133,25 +133,25 @@ class WorkspaceManager:
                 "Must be alphanumeric with dashes, 1-50 characters, "
                 "not starting/ending with dash."
             )
-        
+
         # Check if workspace already exists
         if workspace_name in self._workspace_registry:
             raise WorkspaceError(
                 f"Workspace '{workspace_name}' already exists. "
                 "Use a different name or remove the existing workspace first."
             )
-        
+
         # Validate and normalize site URL
         site_url = self.validate_site_url(site_url)
-        
+
         # Validate email
         if not email or '@' not in email:
             raise WorkspaceError(f"Invalid email address: {email}")
-        
+
         # Validate API token
         if not api_token or len(api_token) < 10:
             raise WorkspaceError("API token appears to be invalid (too short)")
-        
+
         # Create workspace metadata
         workspace_metadata = {
             'name': workspace_name,
@@ -161,29 +161,29 @@ class WorkspaceManager:
             'created': datetime.now().isoformat(),
             'last_validated': None
         }
-        
+
         # Save workspace configuration
         workspace_file = self.accounts_dir / f'{workspace_name}.json'
         try:
-            with open(workspace_file, 'w', encoding='utf-8') as f:
-                json.dump(workspace_metadata, f, indent=2)
-            
+            with open(workspace_file, 'w', encoding='utf-8') as file_handle:
+                json.dump(workspace_metadata, file_handle, indent=2)
+
             # Set secure file permissions (600 - owner read/write only)
             workspace_file.chmod(0o600)
-            
-            logger.info(f"✅ Workspace '{workspace_name}' added successfully")
-            
+
+            logger.info("✅ Workspace '%s' added successfully", workspace_name)
+
         except Exception as e:
             raise WorkspaceError(f"Failed to save workspace configuration: {e}") from e
-        
+
         # Add to registry
         self._workspace_registry[workspace_name] = workspace_metadata
-        
+
         # If this is the first workspace, make it active
         if len(self._workspace_registry) == 1:
             self._set_active_workspace(workspace_name)
-            logger.info(f"🔑 '{workspace_name}' set as active workspace (first workspace)")
-        
+            logger.info("🔑 '%s' set as active workspace (first workspace)", workspace_name)
+
         return {
             'success': True,
             'workspace_name': workspace_name,
@@ -209,7 +209,7 @@ class WorkspaceManager:
                 'last_validated': metadata.get('last_validated'),
                 'created': metadata.get('created')
             })
-        
+
         # Sort by name, with active workspace first
         workspaces.sort(key=lambda x: (not x['active'], x['name']))
         return workspaces
@@ -223,11 +223,11 @@ class WorkspaceManager:
         """
         if not self._active_workspace_name:
             return None
-        
+
         metadata = self._workspace_registry.get(self._active_workspace_name)
         if not metadata:
             return None
-        
+
         return {
             'name': self._active_workspace_name,
             'site_url': metadata.get('site_url', 'Unknown'),
@@ -252,14 +252,14 @@ class WorkspaceManager:
         # Use active workspace if none specified
         if workspace_name is None:
             workspace_name = self._active_workspace_name
-        
+
         if not workspace_name:
             raise WorkspaceError("No active workspace and no workspace specified")
-        
+
         metadata = self._workspace_registry.get(workspace_name)
         if not metadata:
             raise WorkspaceError(f"Workspace '{workspace_name}' not found")
-        
+
         return {
             'site_url': metadata['site_url'],
             'email': metadata['email'],
@@ -282,14 +282,14 @@ class WorkspaceManager:
         # Validate workspace name format
         if not self.validate_workspace_name(workspace_name):
             raise WorkspaceError(f"Invalid workspace name format: {workspace_name}")
-        
+
         # Check if workspace exists
         if workspace_name not in self._workspace_registry:
             raise WorkspaceError(
                 f"Workspace '{workspace_name}' not found. "
                 f"Available workspaces: {', '.join(self._workspace_registry.keys())}"
             )
-        
+
         # Already active?
         if workspace_name == self._active_workspace_name:
             return {
@@ -297,12 +297,12 @@ class WorkspaceManager:
                 'message': f"Workspace '{workspace_name}' is already active",
                 'workspace_name': workspace_name
             }
-        
+
         # Switch to new workspace
         self._set_active_workspace(workspace_name)
-        
-        logger.info(f"✅ Switched to workspace '{workspace_name}'")
-        
+
+        logger.info("✅ Switched to workspace '%s'", workspace_name)
+
         return {
             'success': True,
             'message': f"Switched to workspace '{workspace_name}'",
@@ -326,33 +326,33 @@ class WorkspaceManager:
         # Check if workspace exists
         if workspace_name not in self._workspace_registry:
             raise WorkspaceError(f"Workspace '{workspace_name}' not found")
-        
+
         # Remove workspace file
         workspace_file = self.accounts_dir / f'{workspace_name}.json'
         try:
             if workspace_file.exists():
                 workspace_file.unlink()
-                logger.info(f"🗑️  Removed workspace file: {workspace_file}")
+                logger.info("🗑️  Removed workspace file: %s", workspace_file)
         except Exception as e:
             raise WorkspaceError(f"Failed to remove workspace file: {e}") from e
-        
+
         # Remove from registry
         del self._workspace_registry[workspace_name]
-        
+
         # If this was the active workspace, clear it
         if workspace_name == self._active_workspace_name:
             self._active_workspace_name = None
             self.active_workspace_file.unlink(missing_ok=True)
             logger.info("🔓 Cleared active workspace")
-            
+
             # If there are other workspaces, activate the first one
             if self._workspace_registry:
                 first_workspace = list(self._workspace_registry.keys())[0]
                 self._set_active_workspace(first_workspace)
-                logger.info(f"🔑 Switched to workspace '{first_workspace}'")
-        
-        logger.info(f"✅ Workspace '{workspace_name}' removed successfully")
-        
+                logger.info("🔑 Switched to workspace '%s'", first_workspace)
+
+        logger.info("✅ Workspace '%s' removed successfully", workspace_name)
+
         return {
             'success': True,
             'message': f"Workspace '{workspace_name}' removed"
@@ -362,34 +362,34 @@ class WorkspaceManager:
         """Load all workspace configurations from accounts directory."""
         if not self.accounts_dir.exists():
             return
-        
+
         for workspace_file in self.accounts_dir.glob('*.json'):
             try:
-                with open(workspace_file, 'r', encoding='utf-8') as f:
-                    metadata = json.load(f)
-                
+                with open(workspace_file, 'r', encoding='utf-8') as file_handle:
+                    metadata = json.load(file_handle)
+
                 workspace_name = workspace_file.stem
                 self._workspace_registry[workspace_name] = metadata
-                logger.debug(f"Loaded workspace: {workspace_name}")
-                
+                logger.debug("Loaded workspace: %s", workspace_name)
+
             except Exception as e:
-                logger.error(f"Failed to load workspace from {workspace_file}: {e}")
+                logger.error("Failed to load workspace from %s: %s", workspace_file, e)
 
     def _load_active_workspace(self) -> None:
         """Load the active workspace from .env.active file."""
         if not self.active_workspace_file.exists():
             return
-        
+
         try:
-            workspace_name = self.active_workspace_file.read_text().strip()
+            workspace_name = self.active_workspace_file.read_text(encoding='utf-8').strip()
             if workspace_name and workspace_name in self._workspace_registry:
                 self._active_workspace_name = workspace_name
-                logger.info(f"🔑 Active workspace: {workspace_name}")
+                logger.info("🔑 Active workspace: %s", workspace_name)
             else:
-                logger.warning(f"Active workspace '{workspace_name}' not found in registry")
-                
+                logger.warning("Active workspace '%s' not found in registry", workspace_name)
+
         except Exception as e:
-            logger.error(f"Failed to load active workspace: {e}")
+            logger.error("Failed to load active workspace: %s", e)
 
     def _set_active_workspace(self, workspace_name: str) -> None:
         """
@@ -399,9 +399,9 @@ class WorkspaceManager:
             workspace_name: Name of workspace to activate
         """
         self._active_workspace_name = workspace_name
-        
+
         try:
-            self.active_workspace_file.write_text(workspace_name)
-            logger.debug(f"Active workspace saved to {self.active_workspace_file}")
+            self.active_workspace_file.write_text(workspace_name, encoding='utf-8')
+            logger.debug("Active workspace saved to %s", self.active_workspace_file)
         except Exception as e:
-            logger.error(f"Failed to save active workspace: {e}")
+            logger.error("Failed to save active workspace: %s", e)

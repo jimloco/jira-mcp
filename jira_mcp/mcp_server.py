@@ -216,12 +216,12 @@ class JiraMCPServer:
             )
         ]
 
-    async def _handle_hello(self, arguments: Dict[str, Any]) -> List[types.TextContent]:
+    async def _handle_hello(self, _arguments: Dict[str, Any]) -> List[types.TextContent]:
         """Handle hello operation - test connectivity."""
         try:
             # Get active workspace
             active_workspace = self.workspace_manager.get_active_workspace()
-            
+
             if not active_workspace:
                 return [
                     types.TextContent(
@@ -240,7 +240,7 @@ class JiraMCPServer:
                         )
                     )
                 ]
-            
+
             # Test Jira connection
             try:
                 credentials = self.workspace_manager.get_workspace_credentials()
@@ -249,9 +249,9 @@ class JiraMCPServer:
                     credentials['email'],
                     credentials['api_token']
                 )
-                
+
                 server_info = jira_client.test_connection()
-                
+
                 return [
                     types.TextContent(
                         type="text",
@@ -268,7 +268,7 @@ class JiraMCPServer:
                         )
                     )
                 ]
-                
+
             except JiraClientError as e:
                 return [
                     types.TextContent(
@@ -285,7 +285,7 @@ class JiraMCPServer:
                         )
                     )
                 ]
-        
+
         except Exception as error:
             logger.error("Error in hello operation: %s", error)
             return [
@@ -302,7 +302,7 @@ class JiraMCPServer:
             site_url = arguments.get("site_url")
             email = arguments.get("email")
             api_token = arguments.get("api_token")
-            
+
             # Validate required parameters
             if not all([workspace_name, site_url, email, api_token]):
                 return [
@@ -323,17 +323,17 @@ class JiraMCPServer:
                         )
                     )
                 ]
-            
+
             # Add workspace
             result = self.workspace_manager.add_workspace(
                 workspace_name, site_url, email, api_token
             )
-            
+
             # Test connection
             try:
                 jira_client = JiraClient(result['site_url'], result['email'], api_token)
                 server_info = jira_client.test_connection()
-                
+
                 return [
                     types.TextContent(
                         type="text",
@@ -349,7 +349,7 @@ class JiraMCPServer:
                         )
                     )
                 ]
-            
+
             except JiraClientError as e:
                 return [
                     types.TextContent(
@@ -365,7 +365,7 @@ class JiraMCPServer:
                         )
                     )
                 ]
-        
+
         except WorkspaceError as error:
             return [
                 types.TextContent(
@@ -382,11 +382,11 @@ class JiraMCPServer:
                 )
             ]
 
-    async def _handle_list_workspaces(self, arguments: Dict[str, Any]) -> List[types.TextContent]:
+    async def _handle_list_workspaces(self, _arguments: Dict[str, Any]) -> List[types.TextContent]:
         """Handle list_workspaces operation."""
         try:
             workspaces = self.workspace_manager.list_workspaces()
-            
+
             if not workspaces:
                 return [
                     types.TextContent(
@@ -402,32 +402,32 @@ class JiraMCPServer:
                         )
                     )
                 ]
-            
+
             # Format workspace list
             result_lines = ["📋 **Configured Jira Workspaces**\n"]
-            
+
             for workspace in workspaces:
                 status_icon = "✓" if workspace['active'] else "○"
                 active_label = " (ACTIVE)" if workspace['active'] else ""
-                
+
                 result_lines.append(f"{status_icon} **{workspace['name']}**{active_label}")
                 result_lines.append(f"  └─ Site: {workspace['site_url']}")
                 result_lines.append(f"  └─ Email: {workspace['email']}")
-                
+
                 if workspace.get('created'):
                     result_lines.append(f"  └─ Created: {workspace['created']}")
-                
+
                 result_lines.append("")
-            
+
             result_lines.append(f"**Total workspaces**: {len(workspaces)}")
-            
+
             return [
                 types.TextContent(
                     type="text",
                     text="\n".join(result_lines)
                 )
             ]
-        
+
         except Exception as error:
             logger.error("Error listing workspaces: %s", error)
             return [
@@ -437,11 +437,11 @@ class JiraMCPServer:
                 )
             ]
 
-    async def _handle_get_active_workspace(self, arguments: Dict[str, Any]) -> List[types.TextContent]:
+    async def _handle_get_active_workspace(self, _arguments: Dict[str, Any]) -> List[types.TextContent]:
         """Handle get_active_workspace operation."""
         try:
             active_workspace = self.workspace_manager.get_active_workspace()
-            
+
             if not active_workspace:
                 return [
                     types.TextContent(
@@ -456,23 +456,23 @@ class JiraMCPServer:
                         )
                     )
                 ]
-            
+
             result = (
                 f"✓ **Active Workspace**: {active_workspace['name']}\n\n"
                 f"**Site URL**: {active_workspace['site_url']}\n"
                 f"**Email**: {active_workspace['email']}\n"
             )
-            
+
             if active_workspace.get('created'):
                 result += f"**Created**: {active_workspace['created']}\n"
-            
+
             return [
                 types.TextContent(
                     type="text",
                     text=result
                 )
             ]
-        
+
         except Exception as error:
             logger.error("Error getting active workspace: %s", error)
             return [
@@ -485,7 +485,7 @@ class JiraMCPServer:
     async def _handle_switch_workspace(self, arguments: Dict[str, Any]) -> List[types.TextContent]:
         """Handle switch_workspace operation."""
         workspace_name = arguments.get("workspace_name")
-        
+
         if not workspace_name:
             return [
                 types.TextContent(
@@ -496,10 +496,10 @@ class JiraMCPServer:
                     )
                 )
             ]
-        
+
         try:
             result = self.workspace_manager.switch_workspace(workspace_name)
-            
+
             return [
                 types.TextContent(
                     type="text",
@@ -510,7 +510,7 @@ class JiraMCPServer:
                     )
                 )
             ]
-        
+
         except WorkspaceError as error:
             return [
                 types.TextContent(
@@ -530,7 +530,7 @@ class JiraMCPServer:
     async def _handle_validate_workspace(self, arguments: Dict[str, Any]) -> List[types.TextContent]:
         """Handle validate_workspace operation."""
         workspace_name = arguments.get("workspace_name")
-        
+
         try:
             # Use active workspace if none specified
             if workspace_name:
@@ -539,17 +539,17 @@ class JiraMCPServer:
                 credentials = self.workspace_manager.get_workspace_credentials()
                 active = self.workspace_manager.get_active_workspace()
                 workspace_name = active['name'] if active else "Unknown"
-            
+
             # Test connection
             jira_client = JiraClient(
                 credentials['site_url'],
                 credentials['email'],
                 credentials['api_token']
             )
-            
+
             server_info = jira_client.test_connection()
             user_info = jira_client.get_current_user()
-            
+
             return [
                 types.TextContent(
                     type="text",
@@ -566,7 +566,7 @@ class JiraMCPServer:
                     )
                 )
             ]
-        
+
         except (WorkspaceError, JiraClientError) as error:
             return [
                 types.TextContent(
@@ -586,7 +586,7 @@ class JiraMCPServer:
     async def _handle_remove_workspace(self, arguments: Dict[str, Any]) -> List[types.TextContent]:
         """Handle remove_workspace operation."""
         workspace_name = arguments.get("workspace_name")
-        
+
         if not workspace_name:
             return [
                 types.TextContent(
@@ -597,17 +597,17 @@ class JiraMCPServer:
                     )
                 )
             ]
-        
+
         try:
             result = self.workspace_manager.remove_workspace(workspace_name)
-            
+
             return [
                 types.TextContent(
                     type="text",
                     text=f"✅ **{result['message']}**"
                 )
             ]
-        
+
         except WorkspaceError as error:
             return [
                 types.TextContent(
@@ -624,20 +624,20 @@ class JiraMCPServer:
                 )
             ]
 
-    async def _handle_get_current_user(self, arguments: Dict[str, Any]) -> List[types.TextContent]:
+    async def _handle_get_current_user(self, _arguments: Dict[str, Any]) -> List[types.TextContent]:
         """Handle get_current_user operation."""
         try:
             credentials = self.workspace_manager.get_workspace_credentials()
             active = self.workspace_manager.get_active_workspace()
-            
+
             jira_client = JiraClient(
                 credentials['site_url'],
                 credentials['email'],
                 credentials['api_token']
             )
-            
+
             user_info = jira_client.get_current_user()
-            
+
             return [
                 types.TextContent(
                     type="text",
@@ -650,7 +650,7 @@ class JiraMCPServer:
                     )
                 )
             ]
-        
+
         except (WorkspaceError, JiraClientError) as error:
             return [
                 types.TextContent(
@@ -671,7 +671,7 @@ class JiraMCPServer:
         """Handle search_users operation."""
         query = arguments.get("query")
         max_results = arguments.get("max_results", 50)
-        
+
         if not query:
             return [
                 types.TextContent(
@@ -682,18 +682,18 @@ class JiraMCPServer:
                     )
                 )
             ]
-        
+
         try:
             credentials = self.workspace_manager.get_workspace_credentials()
-            
+
             jira_client = JiraClient(
                 credentials['site_url'],
                 credentials['email'],
                 credentials['api_token']
             )
-            
+
             users = jira_client.search_users(query, max_results)
-            
+
             if not users:
                 return [
                     types.TextContent(
@@ -701,26 +701,26 @@ class JiraMCPServer:
                         text=f"ℹ️ **No users found** matching '{query}'"
                     )
                 ]
-            
+
             # Format user list
             result_lines = [f"👥 **User Search Results** (query: '{query}')\n"]
-            
+
             for user in users[:max_results]:
                 status = "✓" if user['active'] else "○"
                 result_lines.append(f"{status} **{user['display_name']}**")
                 result_lines.append(f"  └─ Email: {user['email']}")
                 result_lines.append(f"  └─ Account ID: {user['account_id']}")
                 result_lines.append("")
-            
+
             result_lines.append(f"**Total results**: {len(users)}")
-            
+
             return [
                 types.TextContent(
                     type="text",
                     text="\n".join(result_lines)
                 )
             ]
-        
+
         except (WorkspaceError, JiraClientError) as error:
             return [
                 types.TextContent(

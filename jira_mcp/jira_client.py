@@ -22,7 +22,7 @@ class JiraClientError(Exception):
 class JiraClient:
     """
     Jira API client wrapper with authentication and error handling.
-    
+
     Provides secure access to Jira Cloud instances using API token authentication.
     """
 
@@ -42,7 +42,7 @@ class JiraClient:
         self.email = email
         self._api_token = api_token  # Keep private
         self._jira: Optional[JIRA] = None
-        
+
         # Initialize connection
         self._connect()
 
@@ -54,23 +54,23 @@ class JiraClient:
             JiraClientError: If connection fails
         """
         try:
-            logger.info(f"Connecting to Jira: {self.site_url}")
-            
+            logger.info("Connecting to Jira: %s", self.site_url)
+
             # Create Jira client with API token authentication
             self._jira = JIRA(
                 server=self.site_url,
                 basic_auth=(self.email, self._api_token)
             )
-            
+
             logger.info("✅ Connected to Jira successfully")
-            
+
         except JIRAError as e:
             error_msg = f"Failed to connect to Jira: {e.text if hasattr(e, 'text') else str(e)}"
-            logger.error(f"❌ {error_msg}")
+            logger.error("❌ %s", error_msg)
             raise JiraClientError(error_msg) from e
         except Exception as e:
             error_msg = f"Unexpected error connecting to Jira: {str(e)}"
-            logger.error(f"❌ {error_msg}")
+            logger.error("❌ %s", error_msg)
             raise JiraClientError(error_msg) from e
 
     def test_connection(self) -> Dict[str, Any]:
@@ -86,23 +86,23 @@ class JiraClient:
         try:
             # Get server info
             server_info = self._jira.server_info()
-            
-            logger.info(f"✅ Jira connection test successful: {server_info.get('serverTitle', 'Unknown')}")
-            
+
+            logger.info("✅ Jira connection test successful: %s", server_info.get('serverTitle', 'Unknown'))
+
             return {
                 'success': True,
                 'server_title': server_info.get('serverTitle', 'Unknown'),
                 'version': server_info.get('version', 'Unknown'),
                 'base_url': server_info.get('baseUrl', self.site_url)
             }
-            
+
         except JIRAError as e:
             error_msg = f"Connection test failed: {e.text if hasattr(e, 'text') else str(e)}"
-            logger.error(f"❌ {error_msg}")
+            logger.error("❌ %s", error_msg)
             raise JiraClientError(error_msg) from e
         except Exception as e:
             error_msg = f"Unexpected error during connection test: {str(e)}"
-            logger.error(f"❌ {error_msg}")
+            logger.error("❌ %s", error_msg)
             raise JiraClientError(error_msg) from e
 
     def get_current_user(self) -> Dict[str, Any]:
@@ -118,24 +118,24 @@ class JiraClient:
         try:
             # Get current user
             user = self._jira.current_user()
-            
+
             # Get user details
             user_info = self._jira.user(user)
-            
+
             return {
                 'account_id': user_info.accountId,
                 'email': user_info.emailAddress,
                 'display_name': user_info.displayName,
                 'active': user_info.active
             }
-            
+
         except JIRAError as e:
             error_msg = f"Failed to get current user: {e.text if hasattr(e, 'text') else str(e)}"
-            logger.error(f"❌ {error_msg}")
+            logger.error("❌ %s", error_msg)
             raise JiraClientError(error_msg) from e
         except Exception as e:
             error_msg = f"Unexpected error getting current user: {str(e)}"
-            logger.error(f"❌ {error_msg}")
+            logger.error("❌ %s", error_msg)
             raise JiraClientError(error_msg) from e
 
     def search_users(self, query: str, max_results: int = 50) -> list:
@@ -155,7 +155,7 @@ class JiraClient:
         try:
             # Search users
             users = self._jira.search_users(query, maxResults=max_results)
-            
+
             # Format user information
             user_list = []
             for user in users:
@@ -165,16 +165,16 @@ class JiraClient:
                     'display_name': user.displayName,
                     'active': user.active
                 })
-            
+
             return user_list
-            
+
         except JIRAError as e:
             error_msg = f"Failed to search users: {e.text if hasattr(e, 'text') else str(e)}"
-            logger.error(f"❌ {error_msg}")
+            logger.error("❌ %s", error_msg)
             raise JiraClientError(error_msg) from e
         except Exception as e:
             error_msg = f"Unexpected error searching users: {str(e)}"
-            logger.error(f"❌ {error_msg}")
+            logger.error("❌ %s", error_msg)
             raise JiraClientError(error_msg) from e
 
     def get_projects(self) -> list:
@@ -189,7 +189,7 @@ class JiraClient:
         """
         try:
             projects = self._jira.projects()
-            
+
             # Format project information
             project_list = []
             for project in projects:
@@ -199,16 +199,16 @@ class JiraClient:
                     'id': project.id,
                     'project_type': getattr(project, 'projectTypeKey', 'Unknown')
                 })
-            
+
             return project_list
-            
+
         except JIRAError as e:
             error_msg = f"Failed to get projects: {e.text if hasattr(e, 'text') else str(e)}"
-            logger.error(f"❌ {error_msg}")
+            logger.error("❌ %s", error_msg)
             raise JiraClientError(error_msg) from e
         except Exception as e:
             error_msg = f"Unexpected error getting projects: {str(e)}"
-            logger.error(f"❌ {error_msg}")
+            logger.error("❌ %s", error_msg)
             raise JiraClientError(error_msg) from e
 
     @property
