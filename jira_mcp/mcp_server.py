@@ -120,6 +120,33 @@ class JiraMCPServer:
                         },
                         "additionalProperties": False
                     }
+                ),
+                types.Tool(
+                    name="jira_projects",
+                    description=(
+                        "Perform Jira project operations: list projects and get project details.\n\n"
+                        "Operations:\n"
+                        "- list: List all accessible projects\n"
+                        "- get: Get detailed information about a specific project\n"
+                        "- get_issue_types: Get available issue types for a project\n\n"
+                        "Use this tool to discover available projects and their configuration."
+                    ),
+                    inputSchema={
+                        "type": "object",
+                        "required": ["operation"],
+                        "properties": {
+                            "operation": {
+                                "type": "string",
+                                "enum": ["list", "get", "get_issue_types"],
+                                "description": "Operation to perform"
+                            },
+                            "project_key": {
+                                "type": "string",
+                                "description": "Project key (for get, get_issue_types) - e.g., 'PROJ', 'DEV'"
+                            }
+                        },
+                        "additionalProperties": False
+                    }
                 )
             ]
 
@@ -157,13 +184,17 @@ class JiraMCPServer:
         if name == "jira_workspace":
             return await self._route_workspace_operation(arguments)
 
+        # Handle jira_projects tool
+        if name == "jira_projects":
+            return await self._route_projects_operation(arguments)
+
         # Unknown tool
         return [
             types.TextContent(
                 type="text",
                 text=(
                     f"❌ **Unknown Tool**: '{name}'\n\n"
-                    "✅ **Available tools**: jira_workspace"
+                    "✅ **Available tools**: jira_workspace, jira_projects"
                 ),
             )
         ]
@@ -737,6 +768,224 @@ class JiraMCPServer:
                 )
             ]
 
+    async def _route_projects_operation(
+        self, arguments: Dict[str, Any]
+    ) -> List[types.TextContent]:
+        """Route jira_projects operations to appropriate handlers."""
+        operation = arguments.get("operation")
+        if not operation:
+            return [
+                types.TextContent(
+                    type="text",
+                    text=(
+                        "❌ **Parameter Error**: Missing required parameter 'operation'\n\n"
+                        "Available operations: list, get, get_issue_types"
+                    )
+                )
+            ]
+
+        # Route to handlers
+        if operation == "list":
+            return await self._handle_list_projects(arguments)
+        if operation == "get":
+            return await self._handle_get_project(arguments)
+        if operation == "get_issue_types":
+            return await self._handle_get_issue_types(arguments)
+
+        return [
+            types.TextContent(
+                type="text",
+                text=f"❌ **Invalid Operation**: '{operation}'\n\n"
+                     "Available operations: list, get, get_issue_types"
+            )
+        ]
+
+    async def _handle_list_projects(self, _arguments: Dict[str, Any]) -> List[types.TextContent]:
+        """Handle list projects operation."""
+        try:
+            credentials = self.workspace_manager.get_workspace_credentials()
+            active = self.workspace_manager.get_active_workspace()
+
+            jira_client = JiraClient(
+                credentials['site_url'],
+                credentials['email'],
+                credentials['api_token']
+            )
+
+            projects = jira_client.get_projects()
+
+            if not projects:
+                return [
+                    types.TextContent(
+                        type="text",
+                        text="ℹ️ **No projects found**\n\nYou may not have access to any projects."
+                    )
+                ]
+
+            # Format project list
+            result_lines = [f"📋 **Projects** ({active['name'] if active else 'Unknown'})\n"]
+
+            for project in projects:
+                result_lines.append(f"**{project['key']}** - {project['name']}")
+                result_lines.append(f"  └─ ID: {project['id']}")
+                result_lines.append(f"  └─ Type: {project['project_type']}")
+                result_lines.append("")
+
+            result_lines.append(f"**Total projects**: {len(projects)}")
+
+            return [
+                types.TextContent(
+                    type="text",
+                    text="\n".join(result_lines)
+                )
+            ]
+
+        except (WorkspaceError, JiraClientError) as error:
+            return [
+                types.TextContent(
+                    type="text",
+                    text=f"❌ **Error**: {str(error)}"
+                )
+            ]
+        except Exception as error:
+            logger.error("Error listing projects: %s", error)
+            return [
+                types.TextContent(
+                    type="text",
+                    text=f"❌ **Error**: {str(error)}"
+                )
+            ]
+
+    async def _handle_get_project(self, arguments: Dict[str, Any]) -> List[types.TextContent]:
+        """Handle get project details operation."""
+        project_key = arguments.get("project_key")
+
+        if not project_key:
+            return [
+                types.TextContent(
+                    type="text",
+                    text=(
+                        "❌ **Missing Required Parameter**: project_key\n\n"
+                        "Example: jira_projects(operation=\"get\", project_key=\"PROJ\")"
+                    )
+                )
+            ]
+
+        try:
+            credentials = self.workspace_manager.get_workspace_credentials()
+
+            jira_client = JiraClient(
+                credentials['site_url'],
+                credentials['email'],
+                credentials['api_token']
+            )
+
+            # Get project details
+            project = jira_client.jira.project(project_key)
+
+            result = (
+                f"📊 **Project: {project.key}**\n\n"
+                f"**Name**: {project.name}\n"
+                f"**ID**: {project.id}\n"
+                f"**Type**: {getattr(project, 'projectTypeKey', 'Unknown')}\n"
+                f"**Description**: {getattr(project, 'description', 'No description')}\n"
+                f"**Lead**: {getattr(project.lead, 'displayName', 'Unknown') if hasattr(project, 'lead') else 'Unknown'}\n"
+            )
+
+            return [
+                types.TextContent(
+                    type="text",
+                    text=result
+                )
+            ]
+
+        except (WorkspaceError, JiraClientError) as error:
+            return [
+                types.TextContent(
+                    type="text",
+                    text=f"❌ **Error**: {str(error)}"
+                )
+            ]
+        except Exception as error:
+            logger.error("Error getting project details: %s", error)
+            return [
+                types.TextContent(
+                    type="text",
+                    text=f"❌ **Error**: Project '{project_key}' not found or access denied"
+                )
+            ]
+
+    async def _handle_get_issue_types(self, arguments: Dict[str, Any]) -> List[types.TextContent]:
+        """Handle get issue types for project operation."""
+        project_key = arguments.get("project_key")
+
+        if not project_key:
+            return [
+                types.TextContent(
+                    type="text",
+                    text=(
+                        "❌ **Missing Required Parameter**: project_key\n\n"
+                        "Example: jira_projects(operation=\"get_issue_types\", project_key=\"PROJ\")"
+                    )
+                )
+            ]
+
+        try:
+            credentials = self.workspace_manager.get_workspace_credentials()
+
+            jira_client = JiraClient(
+                credentials['site_url'],
+                credentials['email'],
+                credentials['api_token']
+            )
+
+            # Get project to access issue types
+            project = jira_client.jira.project(project_key)
+            issue_types = project.issueTypes
+
+            if not issue_types:
+                return [
+                    types.TextContent(
+                        type="text",
+                        text=f"ℹ️ **No issue types found** for project '{project_key}'"
+                    )
+                ]
+
+            # Format issue types list
+            result_lines = [f"🎫 **Issue Types for {project_key}**\n"]
+
+            for issue_type in issue_types:
+                result_lines.append(f"**{issue_type.name}**")
+                result_lines.append(f"  └─ ID: {issue_type.id}")
+                result_lines.append(f"  └─ Description: {getattr(issue_type, 'description', 'No description')}")
+                result_lines.append(f"  └─ Subtask: {'Yes' if getattr(issue_type, 'subtask', False) else 'No'}")
+                result_lines.append("")
+
+            result_lines.append(f"**Total issue types**: {len(issue_types)}")
+
+            return [
+                types.TextContent(
+                    type="text",
+                    text="\n".join(result_lines)
+                )
+            ]
+
+        except (WorkspaceError, JiraClientError) as error:
+            return [
+                types.TextContent(
+                    type="text",
+                    text=f"❌ **Error**: {str(error)}"
+                )
+            ]
+        except Exception as error:
+            logger.error("Error getting issue types: %s", error)
+            return [
+                types.TextContent(
+                    type="text",
+                    text=f"❌ **Error**: Project '{project_key}' not found or access denied"
+                )
+            ]
+
     def get_server_info(self) -> Dict[str, Any]:
         """
         Get server information.
@@ -747,5 +996,5 @@ class JiraMCPServer:
         return {
             "server_name": self.server_name,
             "server_version": self.server_version,
-            "registered_tools": ["jira_workspace"]
+            "registered_tools": ["jira_workspace", "jira_projects"]
         }
