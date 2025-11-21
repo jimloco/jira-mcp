@@ -6,9 +6,9 @@
 
 ## Project Status
 
-**Current Phase:** Phase 3 Complete ✅ - Ready for Phase 4  
+**Current Phase:** Phase 4 Complete ✅ - Core Tools Implemented  
 **Last Updated:** November 21, 2025  
-**Git Commit:** `906c8b0` on `main` branch
+**Git Commit:** `c7b0336` on `main` branch
 
 ### Completed Milestones
 - ✅ **Phase 1: Project Bootstrap & Infrastructure** (Nov 20, 2025)
@@ -32,11 +32,18 @@
   - Get project details by key
   - Get issue types for projects
 
+- ✅ **Phase 4: jira_issues Core Operations** (Nov 21, 2025)
+  - jira_issues tool with 7 operations
+  - Full issue lifecycle management (CRUD + workflow)
+  - JQL search integration
+  - Issue creation, updates, assignments, and transitions
+
 ### Current Status
-- **Phase 4: jira_issues Core Operations** - Ready to start
-- 2 tools implemented: `jira_workspace` (9 operations), `jira_projects` (3 operations)
-- 1 tool remaining: `jira_issues`
-- MCP server with workspace and project management fully functional
+- **All Core Tools Complete** ✅
+- 3 tools implemented: `jira_workspace` (9 operations), `jira_projects` (3 operations), `jira_issues` (7 operations)
+- Total: 19 operations across 3 MCP tools
+- Complete Jira integration for AI assistants
+- Optional: Phase 5 (Comments) and Phase 6 (Attachments) for extended functionality
 
 ## Overview
 
@@ -309,16 +316,31 @@ A Model Context Protocol (MCP) server that provides AI assistants with direct ac
 - `get` - Get detailed project information by key
 - `get_issue_types` - Get available issue types for a project
 
-### Phase 4: jira_issues Core Operations
-- [ ] Define jira_issues tool schema
-- [ ] Implement _route_issues_operation router
-- [ ] Implement IssueManager class
-- [ ] Implement search with JQL
-- [ ] Implement read with full issue details
-- [ ] Implement create with field validation
-- [ ] Implement update with field mapping
-- [ ] Implement transition with workflow validation
-- [ ] Implement assign operation
+### Phase 4: jira_issues Core Operations ✅ **COMPLETED**
+- [x] Define jira_issues tool schema
+- [x] Implement _route_issues_operation router
+- [x] Implement IssueManager class
+- [x] Implement search with JQL
+- [x] Implement read with full issue details
+- [x] Implement create with field validation
+- [x] Implement update with field mapping
+- [x] Implement transition with workflow validation
+- [x] Implement assign operation
+
+**Status:** Committed and pushed to `rosebud:/var/lib/git/jira-mcp` (commit `c7b0336`)  
+**Date Completed:** November 21, 2025
+
+**Operations Available:**
+- `search` - JQL-based issue search
+- `read` - Get full issue details
+- `create` - Create new issues with fields
+- `update` - Update issue fields
+- `assign` - Assign issues to users
+- `transition` - Move issues through workflow
+- `get_transitions` - Get available transitions
+
+**Files Created:**
+- `jira_mcp/issue_manager.py` (465 lines) - Complete issue lifecycle management
 
 ### Phase 5: jira_issues Comments
 - [ ] Implement list_comments
