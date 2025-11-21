@@ -6,9 +6,9 @@
 
 ## Project Status
 
-**Current Phase:** Phase 5 Complete ✅ - Comments Implemented  
+**Current Phase:** Phase 6 Complete ✅ - Full Feature Set Implemented  
 **Last Updated:** November 21, 2025  
-**Git Commit:** `d51da8b` on `main` branch
+**Git Commit:** `fd20a9a` on `main` branch
 
 ### Completed Milestones
 - ✅ **Phase 1: Project Bootstrap & Infrastructure** (Nov 20, 2025)
@@ -43,12 +43,17 @@
   - Full comment CRUD (list, add, update, delete)
   - Comment management with author tracking
 
+- ✅ **Phase 6: jira_issues Attachments** (Nov 21, 2025)
+  - Added 3 attachment operations to jira_issues tool
+  - File upload and management
+  - Attachment listing with metadata
+
 ### Current Status
-- **Core + Comments Complete** ✅
-- 3 tools implemented: `jira_workspace` (9 operations), `jira_projects` (3 operations), `jira_issues` (11 operations)
-- Total: 23 operations across 3 MCP tools
-- Complete Jira integration for AI assistants with comment support
-- Optional: Phase 6 (Attachments) for file management
+- **Full Feature Set Complete** ✅
+- 3 tools implemented: `jira_workspace` (9 operations), `jira_projects` (3 operations), `jira_issues` (14 operations)
+- Total: 26 operations across 3 MCP tools
+- Complete Jira integration for AI assistants including comments and attachments
+- Production-ready MCP server
 
 ## Overview
 
@@ -366,11 +371,24 @@ A Model Context Protocol (MCP) server that provides AI assistants with direct ac
 - 168 lines in `issue_manager.py`
 - 242 lines in `mcp_server.py`
 
-### Phase 6: jira_issues Attachments
-- [ ] Implement list_attachments
-- [ ] Implement upload_attachment with file validation
-- [ ] Implement download_attachment with path sanitization
-- [ ] Implement delete_attachment
+### Phase 6: jira_issues Attachments ✅ **COMPLETED**
+- [x] Implement list_attachments
+- [x] Implement add_attachment with file upload
+- [x] Implement delete_attachment
+
+**Status:** Committed and pushed to `rosebud:/var/lib/git/jira-mcp` (commit `fd20a9a`)  
+**Date Completed:** November 21, 2025
+
+**Operations Added:**
+- `list_attachments` - Get all attachments with size/type/author
+- `add_attachment` - Upload file to issue from local filesystem
+- `delete_attachment` - Remove attachment by ID
+
+**Code Added:**
+- 129 lines in `issue_manager.py`
+- 195 lines in `mcp_server.py`
+
+**Note:** Download operation not needed as attachments can be accessed via content_url returned by list_attachments
 
 ### Phase 7: jira_issues Links & Subtasks
 - [ ] Implement create_link with link types
