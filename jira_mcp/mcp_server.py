@@ -166,6 +166,10 @@ class JiraMCPServer:
                         "- add_comment: Add a new comment to an issue\n"
                         "- update_comment: Update an existing comment\n"
                         "- delete_comment: Delete a comment\n\n"
+                        "Attachment Operations:\n"
+                        "- list_attachments: Get all attachments on an issue\n"
+                        "- add_attachment: Upload a file attachment to an issue\n"
+                        "- delete_attachment: Remove an attachment\n\n"
                         "Use this tool for complete issue lifecycle management."
                     ),
                     inputSchema={
@@ -177,7 +181,8 @@ class JiraMCPServer:
                                 "enum": [
                                     "search", "read", "create", "update", "assign", "transition",
                                     "get_transitions", "list_comments", "add_comment",
-                                    "update_comment", "delete_comment"
+                                    "update_comment", "delete_comment", "list_attachments",
+                                    "add_attachment", "delete_attachment"
                                 ],
                                 "description": "Operation to perform"
                             },
@@ -237,6 +242,14 @@ class JiraMCPServer:
                             "comment_id": {
                                 "type": "string",
                                 "description": "Comment ID (for update_comment, delete_comment)"
+                            },
+                            "filepath": {
+                                "type": "string",
+                                "description": "File path (for add_attachment) - local path to file to upload"
+                            },
+                            "attachment_id": {
+                                "type": "string",
+                                "description": "Attachment ID (for delete_attachment)"
                             }
                         },
                         "additionalProperties": False
@@ -1084,7 +1097,7 @@ class JiraMCPServer:
                 )
             ]
 
-    async def _route_issues_operation(
+    async def _route_issues_operation(  # pylint: disable=too-many-branches
         self, arguments: Dict[str, Any]
     ) -> List[types.TextContent]:
         """Route jira_issues operations to appropriate handlers."""
@@ -1096,7 +1109,8 @@ class JiraMCPServer:
                     text=(
                         "❌ **Parameter Error**: Missing required parameter 'operation'\n\n"
                         "Available operations: search, read, create, update, assign, transition, get_transitions, "
-                        "list_comments, add_comment, update_comment, delete_comment"
+                        "list_comments, add_comment, update_comment, delete_comment, "
+                        "list_attachments, add_attachment, delete_attachment"
                     )
                 )
             ]
@@ -1124,13 +1138,20 @@ class JiraMCPServer:
             return await self._handle_update_comment(arguments)
         if operation == "delete_comment":
             return await self._handle_delete_comment(arguments)
+        if operation == "list_attachments":
+            return await self._handle_list_attachments(arguments)
+        if operation == "add_attachment":
+            return await self._handle_add_attachment(arguments)
+        if operation == "delete_attachment":
+            return await self._handle_delete_attachment(arguments)
 
         return [
             types.TextContent(
                 type="text",
                 text=f"❌ **Invalid Operation**: '{operation}'\n\n"
                      "Available operations: search, read, create, update, assign, transition, get_transitions, "
-                     "list_comments, add_comment, update_comment, delete_comment"
+                     "list_comments, add_comment, update_comment, delete_comment, "
+                     "list_attachments, add_attachment, delete_attachment"
             )
         ]
 
@@ -1838,6 +1859,191 @@ class JiraMCPServer:
             ]
         except Exception as error:
             logger.error("Error deleting comment: %s", error)
+            return [
+                types.TextContent(
+                    type="text",
+                    text=f"❌ **Error**: {str(error)}"
+                )
+            ]
+
+    async def _handle_list_attachments(self, arguments: Dict[str, Any]) -> List[types.TextContent]:
+        """Handle list attachments operation."""
+        issue_key = arguments.get("issue_key")
+        if not issue_key:
+            return [
+                types.TextContent(
+                    type="text",
+                    text=(
+                        "❌ **Missing Required Parameter**: issue_key\n\n"
+                        "Example: jira_issues(operation=\"list_attachments\", issue_key=\"ENG-123\")"
+                    )
+                )
+            ]
+
+        try:
+            credentials = self.workspace_manager.get_workspace_credentials()
+            jira_client = JiraClient(
+                credentials['site_url'],
+                credentials['email'],
+                credentials['api_token']
+            )
+
+            issue_manager = IssueManager(jira_client.jira, credentials['site_url'])
+            attachments = issue_manager.list_attachments(issue_key)
+
+            if not attachments:
+                return [
+                    types.TextContent(
+                        type="text",
+                        text=f"ℹ️ **No attachments** on {issue_key}"
+                    )
+                ]
+
+            # Format attachments list
+            result_lines = [f"📎 **Attachments on {issue_key}**\n"]
+
+            for attachment in attachments:
+                size_kb = attachment['size'] / 1024
+                result_lines.append(f"**{attachment['filename']}** (ID: {attachment['id']})")
+                result_lines.append(f"  └─ Size: {size_kb:.1f} KB")
+                result_lines.append(f"  └─ Type: {attachment['mime_type']}")
+                result_lines.append(f"  └─ Author: {attachment['author']['name']}")
+                result_lines.append(f"  └─ Created: {attachment['created']}")
+                result_lines.append("")
+
+            result_lines.append(f"**Total attachments**: {len(attachments)}")
+
+            return [
+                types.TextContent(
+                    type="text",
+                    text="\n".join(result_lines)
+                )
+            ]
+
+        except (WorkspaceError, JiraClientError, IssueManagerError) as error:
+            return [
+                types.TextContent(
+                    type="text",
+                    text=f"❌ **Error**: {str(error)}"
+                )
+            ]
+        except Exception as error:
+            logger.error("Error listing attachments: %s", error)
+            return [
+                types.TextContent(
+                    type="text",
+                    text=f"❌ **Error**: {str(error)}"
+                )
+            ]
+
+    async def _handle_add_attachment(self, arguments: Dict[str, Any]) -> List[types.TextContent]:
+        """Handle add attachment operation."""
+        issue_key = arguments.get("issue_key")
+        filepath = arguments.get("filepath")
+
+        if not issue_key or not filepath:
+            return [
+                types.TextContent(
+                    type="text",
+                    text=(
+                        "❌ **Missing Required Parameters**: issue_key, filepath\n\n"
+                        "Example: jira_issues(operation=\"add_attachment\", issue_key=\"ENG-123\", "
+                        "filepath=\"/path/to/file.pdf\")"
+                    )
+                )
+            ]
+
+        try:
+            credentials = self.workspace_manager.get_workspace_credentials()
+            jira_client = JiraClient(
+                credentials['site_url'],
+                credentials['email'],
+                credentials['api_token']
+            )
+
+            issue_manager = IssueManager(jira_client.jira, credentials['site_url'])
+            attachment = issue_manager.add_attachment(issue_key, filepath)
+
+            size_kb = attachment['size'] / 1024
+            result = (
+                f"✅ **Attachment Added** to {issue_key}\n\n"
+                f"**Filename**: {attachment['filename']}\n"
+                f"**ID**: {attachment['id']}\n"
+                f"**Size**: {size_kb:.1f} KB\n"
+                f"**Type**: {attachment['mime_type']}\n"
+                f"**Created**: {attachment['created']}"
+            )
+
+            return [
+                types.TextContent(
+                    type="text",
+                    text=result
+                )
+            ]
+
+        except (WorkspaceError, JiraClientError, IssueManagerError) as error:
+            return [
+                types.TextContent(
+                    type="text",
+                    text=f"❌ **Error**: {str(error)}"
+                )
+            ]
+        except Exception as error:
+            logger.error("Error adding attachment: %s", error)
+            return [
+                types.TextContent(
+                    type="text",
+                    text=f"❌ **Error**: {str(error)}"
+                )
+            ]
+
+    async def _handle_delete_attachment(self, arguments: Dict[str, Any]) -> List[types.TextContent]:
+        """Handle delete attachment operation."""
+        attachment_id = arguments.get("attachment_id")
+
+        if not attachment_id:
+            return [
+                types.TextContent(
+                    type="text",
+                    text=(
+                        "❌ **Missing Required Parameter**: attachment_id\n\n"
+                        "Example: jira_issues(operation=\"delete_attachment\", attachment_id=\"12345\")"
+                    )
+                )
+            ]
+
+        try:
+            credentials = self.workspace_manager.get_workspace_credentials()
+            jira_client = JiraClient(
+                credentials['site_url'],
+                credentials['email'],
+                credentials['api_token']
+            )
+
+            issue_manager = IssueManager(jira_client.jira, credentials['site_url'])
+            issue_manager.delete_attachment(attachment_id)
+
+            result = (
+                f"✅ **Attachment Deleted**\n\n"
+                f"**Attachment ID**: {attachment_id}"
+            )
+
+            return [
+                types.TextContent(
+                    type="text",
+                    text=result
+                )
+            ]
+
+        except (WorkspaceError, JiraClientError, IssueManagerError) as error:
+            return [
+                types.TextContent(
+                    type="text",
+                    text=f"❌ **Error**: {str(error)}"
+                )
+            ]
+        except Exception as error:
+            logger.error("Error deleting attachment: %s", error)
             return [
                 types.TextContent(
                     type="text",

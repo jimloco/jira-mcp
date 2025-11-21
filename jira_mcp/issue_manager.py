@@ -627,6 +627,132 @@ class IssueManager:
             logger.error("❌ %s", error_msg)
             raise IssueManagerError(error_msg) from e
 
+    def list_attachments(self, issue_key: str) -> List[Dict[str, Any]]:
+        """
+        Get all attachments for an issue.
+
+        Args:
+            issue_key: Issue key (e.g., 'PROJ-123')
+
+        Returns:
+            List of attachment dictionaries
+
+        Raises:
+            IssueManagerError: If retrieval fails
+        """
+        try:
+            logger.info("Getting attachments for issue: %s", issue_key)
+
+            issue = self.jira.issue(issue_key)
+            attachments = issue.fields.attachment
+
+            attachment_list = []
+            for attachment in attachments:
+                attachment_data = {
+                    'id': attachment.id,
+                    'filename': attachment.filename,
+                    'size': attachment.size,
+                    'mime_type': getattr(attachment, 'mimeType', 'unknown'),
+                    'created': str(attachment.created),
+                    'author': {
+                        'name': attachment.author.displayName,
+                        'account_id': attachment.author.accountId
+                    },
+                    'content_url': attachment.content
+                }
+                attachment_list.append(attachment_data)
+
+            logger.info("Found %d attachments", len(attachment_list))
+            return attachment_list
+
+        except JIRAError as e:
+            error_msg = f"Failed to get attachments for {issue_key}: {e.text if hasattr(e, 'text') else str(e)}"
+            logger.error("❌ %s", error_msg)
+            raise IssueManagerError(error_msg) from e
+        except Exception as e:
+            error_msg = f"Unexpected error getting attachments: {str(e)}"
+            logger.error("❌ %s", error_msg)
+            raise IssueManagerError(error_msg) from e
+
+    def add_attachment(self, issue_key: str, filepath: str) -> Dict[str, Any]:
+        """
+        Upload an attachment to an issue.
+
+        Args:
+            issue_key: Issue key (e.g., 'PROJ-123')
+            filepath: Path to file to upload
+
+        Returns:
+            Created attachment dictionary
+
+        Raises:
+            IssueManagerError: If upload fails
+        """
+        try:
+            logger.info("Adding attachment to issue %s: %s", issue_key, filepath)
+
+            issue = self.jira.issue(issue_key)
+
+            # Upload the attachment
+            with open(filepath, 'rb') as file:
+                attachment = self.jira.add_attachment(issue, file)
+
+            attachment_data = {
+                'id': attachment.id,
+                'filename': attachment.filename,
+                'size': attachment.size,
+                'mime_type': getattr(attachment, 'mimeType', 'unknown'),
+                'created': str(attachment.created),
+                'author': {
+                    'name': attachment.author.displayName,
+                    'account_id': attachment.author.accountId
+                },
+                'content_url': attachment.content
+            }
+
+            logger.info("✅ Added attachment to %s", issue_key)
+            return attachment_data
+
+        except FileNotFoundError as e:
+            error_msg = f"File not found: {filepath}"
+            logger.error("❌ %s", error_msg)
+            raise IssueManagerError(error_msg) from e
+        except JIRAError as e:
+            error_msg = f"Failed to add attachment to {issue_key}: {e.text if hasattr(e, 'text') else str(e)}"
+            logger.error("❌ %s", error_msg)
+            raise IssueManagerError(error_msg) from e
+        except Exception as e:
+            error_msg = f"Unexpected error adding attachment: {str(e)}"
+            logger.error("❌ %s", error_msg)
+            raise IssueManagerError(error_msg) from e
+
+    def delete_attachment(self, attachment_id: str) -> None:
+        """
+        Delete an attachment.
+
+        Args:
+            attachment_id: Attachment ID to delete
+
+        Raises:
+            IssueManagerError: If deletion fails
+        """
+        try:
+            logger.info("Deleting attachment: %s", attachment_id)
+
+            attachment = self.jira.attachment(attachment_id)
+            attachment.delete()
+
+            logger.info("✅ Deleted attachment %s", attachment_id)
+
+        except JIRAError as e:
+            error_msg = f"Failed to delete attachment {attachment_id}: {e.text if hasattr(e, 'text') else str(e)}"
+            logger.error("❌ %s", error_msg)
+            raise IssueManagerError(error_msg) from e
+        except Exception as e:
+            error_msg = f"Unexpected error deleting attachment: {str(e)}"
+            logger.error("❌ %s", error_msg)
+            raise IssueManagerError(error_msg) from e
+
     def __repr__(self) -> str:
         """String representation of IssueManager."""
         return f"IssueManager(site_url='{self.site_url}')"
