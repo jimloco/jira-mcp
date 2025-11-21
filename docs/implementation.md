@@ -233,30 +233,30 @@ A Model Context Protocol (MCP) server that provides AI assistants with direct ac
 **Status:** Committed and pushed to `rosebud:/var/lib/git/jira-mcp` (commit `01e6644`)  
 **Date Completed:** November 20, 2025
 
-### Phase 2: Workspace Management
+### Phase 2: MCP Server + Workspace Management (MVP)
+**Goal:** Working MCP server with `jira_workspace` tool for testing workspace configuration
+
+#### MCP Server Infrastructure
+- [ ] Implement mcp_server.py with tool registration framework
+- [ ] Define jira_workspace tool schema
+- [ ] Implement _dispatch_tool_call router
+- [ ] Implement _route_workspace_operation router
+- [ ] Connect server.py to mcp_server.py with STDIO transport
+
+#### Workspace Manager
 - [ ] Implement WorkspaceManager for add/list/switch operations
-- [ ] Create accounts/ directory structure
+- [ ] Implement accounts/ JSON file storage
 - [ ] Implement .env.active file handling
-- [ ] Add workspace validation with Jira API connectivity test
 - [ ] Handle workspace switching without server restart
 - [ ] Implement remove_workspace operation
 
-### Phase 3: Jira API Client
+#### Jira Client (Basic)
 - [ ] Create JiraClient wrapper around jira Python library
 - [ ] Implement authentication with API token
-- [ ] Add error handling for API failures
-- [ ] Implement rate limiting and retry logic
+- [ ] Add basic error handling for API failures
 - [ ] Add logging for API calls (without exposing tokens)
 
-### Phase 4: MCP Server & Tool Registration
-- [ ] Implement mcp_server.py with tool registration
-- [ ] Define jira_workspace tool schema and operations
-- [ ] Define jira_issues tool schema and operations
-- [ ] Define jira_projects tool schema and operations
-- [ ] Implement _dispatch_tool_call router
-- [ ] Implement operation routers (_route_workspace_operation, etc.)
-
-### Phase 5: jira_workspace Tool Implementation
+#### jira_workspace Tool Operations
 - [ ] Implement hello operation (connectivity test)
 - [ ] Implement add_workspace with validation
 - [ ] Implement list_workspaces with active indicator
@@ -267,7 +267,19 @@ A Model Context Protocol (MCP) server that provides AI assistants with direct ac
 - [ ] Implement get_current_user
 - [ ] Implement search_users
 
-### Phase 6: jira_issues Core Operations
+**Phase 2 Deliverable:** Working MCP server that can manage workspaces and test Jira connectivity
+
+### Phase 3: jira_projects Tool
+- [ ] Define jira_projects tool schema
+- [ ] Implement _route_projects_operation router
+- [ ] Implement list operation
+- [ ] Implement get operation
+- [ ] Implement get_issue_types operation
+
+### Phase 4: jira_issues Core Operations
+- [ ] Define jira_issues tool schema
+- [ ] Implement _route_issues_operation router
+- [ ] Implement IssueManager class
 - [ ] Implement search with JQL
 - [ ] Implement read with full issue details
 - [ ] Implement create with field validation
@@ -275,31 +287,26 @@ A Model Context Protocol (MCP) server that provides AI assistants with direct ac
 - [ ] Implement transition with workflow validation
 - [ ] Implement assign operation
 
-### Phase 7: jira_issues Comments
+### Phase 5: jira_issues Comments
 - [ ] Implement list_comments
 - [ ] Implement add_comment
 - [ ] Implement update_comment
 - [ ] Implement delete_comment
 
-### Phase 8: jira_issues Attachments
+### Phase 6: jira_issues Attachments
 - [ ] Implement list_attachments
 - [ ] Implement upload_attachment with file validation
 - [ ] Implement download_attachment with path sanitization
 - [ ] Implement delete_attachment
 
-### Phase 9: jira_issues Links & Subtasks
+### Phase 7: jira_issues Links & Subtasks
 - [ ] Implement create_link with link types
 - [ ] Implement delete_link
 - [ ] Implement list_links
 - [ ] Implement create_subtask
 - [ ] Implement list_subtasks
 
-### Phase 10: jira_projects Tool
-- [ ] Implement list projects
-- [ ] Implement get project details
-- [ ] Implement get_issue_types for project
-
-### Phase 11: Testing & Documentation
+### Phase 8: Testing & Documentation
 - [ ] Test multi-workspace switching
 - [ ] Test all jira_issues operations
 - [ ] Test error handling and edge cases
@@ -307,13 +314,14 @@ A Model Context Protocol (MCP) server that provides AI assistants with direct ac
 - [ ] Document workspace configuration format
 - [ ] Add troubleshooting guide
 
-### Phase 12: Polish & Deployment
+### Phase 9: Polish & Deployment
 - [ ] Add comprehensive logging
-- [ ] Implement graceful shutdown
-- [ ] Add signal handlers (SIGINT, SIGTERM)
+- [ ] Implement graceful shutdown (already done in Phase 1)
+- [ ] Add signal handlers (SIGINT, SIGTERM - already done in Phase 1)
 - [ ] Create example .env files
 - [ ] Performance testing with large result sets
 - [ ] Security review of credential storage
+- [ ] Implement rate limiting and retry logic
 
 ---
 
