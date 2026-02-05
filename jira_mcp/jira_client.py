@@ -23,17 +23,18 @@ class JiraClient:
     """
     Jira API client wrapper with authentication and error handling.
 
-    Provides secure access to Jira Cloud instances using API token authentication.
+    Supports both Jira Cloud (email + API token) and Jira Server/Data Center (PAT).
     """
 
-    def __init__(self, site_url: str, email: str, api_token: str):
+    def __init__(self, site_url: str, email: str, api_token: str, auth_type: str = 'cloud'):
         """
         Initialize Jira client.
 
         Args:
             site_url: Jira site URL (e.g., https://company.atlassian.net)
-            email: Email address for authentication
-            api_token: Jira API token
+            email: Email address for authentication (Cloud) or username (Server with basic auth)
+            api_token: Jira API token (Cloud) or Personal Access Token (Server)
+            auth_type: Authentication type - 'cloud' (email+token) or 'pat' (Personal Access Token)
 
         Raises:
             JiraClientError: If initialization fails
@@ -41,6 +42,7 @@ class JiraClient:
         self.site_url = site_url
         self.email = email
         self._api_token = api_token  # Keep private
+        self.auth_type = auth_type
         self._jira: Optional[JIRA] = None
 
         # Initialize connection
@@ -54,15 +56,23 @@ class JiraClient:
             JiraClientError: If connection fails
         """
         try:
-            logger.info("Connecting to Jira: %s", self.site_url)
+            logger.info("Connecting to Jira: %s (auth_type: %s)", self.site_url, self.auth_type)
 
-            # Create Jira client with API token authentication
-            self._jira = JIRA(
-                server=self.site_url,
-                basic_auth=(self.email, self._api_token)
-            )
-
-            logger.info("✅ Connected to Jira successfully")
+            if self.auth_type == 'pat':
+                # Jira Server/Data Center with Personal Access Token
+                # PAT uses Bearer token authentication
+                self._jira = JIRA(
+                    server=self.site_url,
+                    token_auth=self._api_token
+                )
+                logger.info("✅ Connected to Jira Server/Data Center with PAT")
+            else:
+                # Jira Cloud with email + API token (basic auth)
+                self._jira = JIRA(
+                    server=self.site_url,
+                    basic_auth=(self.email, self._api_token)
+                )
+                logger.info("✅ Connected to Jira Cloud with API token")
 
         except JIRAError as e:
             error_msg = f"Failed to connect to Jira: {e.text if hasattr(e, 'text') else str(e)}"
@@ -105,6 +115,28 @@ class JiraClient:
             logger.error("❌ %s", error_msg)
             raise JiraClientError(error_msg) from e
 
+    def _get_user_attribute(self, user_obj: Any, cloud_attr: str, server_attr: str, default: Any = None) -> Any:
+        """
+        Safely get user attribute that may differ between Cloud and Server.
+
+        Args:
+            user_obj: User object from Jira API
+            cloud_attr: Attribute name in Jira Cloud
+            server_attr: Attribute name in Jira Server/Data Center
+            default: Default value if attribute not found
+
+        Returns:
+            Attribute value or default
+        """
+        # Try Cloud attribute first
+        if hasattr(user_obj, cloud_attr):
+            return getattr(user_obj, cloud_attr)
+        # Try Server attribute
+        if hasattr(user_obj, server_attr):
+            return getattr(user_obj, server_attr)
+        # Return default
+        return default
+
     def get_current_user(self) -> Dict[str, Any]:
         """
         Get current authenticated user information.
@@ -123,10 +155,10 @@ class JiraClient:
             user_info = self._jira.user(user)
 
             return {
-                'account_id': user_info.accountId,
-                'email': user_info.emailAddress,
-                'display_name': user_info.displayName,
-                'active': user_info.active
+                'account_id': self._get_user_attribute(user_info, 'accountId', 'name', 'N/A'),
+                'email': self._get_user_attribute(user_info, 'emailAddress', 'emailAddress', 'N/A'),
+                'display_name': self._get_user_attribute(user_info, 'displayName', 'displayName', 'Unknown'),
+                'active': self._get_user_attribute(user_info, 'active', 'active', True)
             }
 
         except JIRAError as e:
@@ -160,10 +192,10 @@ class JiraClient:
             user_list = []
             for user in users:
                 user_list.append({
-                    'account_id': user.accountId,
-                    'email': getattr(user, 'emailAddress', 'N/A'),
-                    'display_name': user.displayName,
-                    'active': user.active
+                    'account_id': self._get_user_attribute(user, 'accountId', 'name', 'N/A'),
+                    'email': self._get_user_attribute(user, 'emailAddress', 'emailAddress', 'N/A'),
+                    'display_name': self._get_user_attribute(user, 'displayName', 'displayName', 'Unknown'),
+                    'active': self._get_user_attribute(user, 'active', 'active', True)
                 })
 
             return user_list

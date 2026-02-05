@@ -4,20 +4,22 @@
 
 # Jira MCP Server
 
-> **Enterprise-grade Model Context Protocol server for comprehensive Jira Cloud integration**
+> **Enterprise-grade Model Context Protocol server for comprehensive Jira Cloud and Server/Data Center integration**
 
 [![Python Version](https://img.shields.io/badge/python-3.12%2B-blue.svg)](https://www.python.org/downloads/)
 [![Code Quality](https://img.shields.io/badge/pylint-10.00%2F10-brightgreen.svg)](https://pylint.org/)
 [![MCP Protocol](https://img.shields.io/badge/MCP-STDIO-orange.svg)](https://modelcontextprotocol.io/)
 
-A production-ready MCP server that provides AI assistants with complete access to Jira Cloud. Enables natural language interaction with Jira for issue management, project navigation, and workflow automation across multiple Jira workspaces.
+A production-ready MCP server that provides AI assistants with complete access to Jira Cloud and Jira Server/Data Center. Enables natural language interaction with Jira for issue management, project navigation, and workflow automation across multiple Jira workspaces.
 
 ## ✨ Features
 
 ### 🏢 Multi-Workspace Management
-- Connect to multiple Jira Cloud instances simultaneously
+- Connect to multiple Jira Cloud and Server/Data Center instances
+- Support for both Cloud (API token) and Server/Data Center (PAT) authentication
 - Seamlessly switch between workspaces
-- Secure API token authentication
+- XDG-compliant configuration storage (~/.config/jira-mcp/)
+- Secure skeleton file workflow for credential management
 - Workspace validation and credential management
 
 ### 🎫 Complete Issue Lifecycle
@@ -45,7 +47,7 @@ A production-ready MCP server that provides AI assistants with complete access t
 
 - **Python 3.12+** - Required for modern Python features
 - **Poetry** - Dependency management
-- **Jira Cloud** - Active instance with API access
+- **Jira Cloud or Server/Data Center** - Active instance with API access
 
 ### Installation
 
@@ -65,32 +67,76 @@ The server runs using STDIO transport and communicates via the Model Context Pro
 
 ## 🔧 Configuration
 
-### Getting Your Jira API Token
+### Configuration Location
 
+All workspace configurations are stored in **`~/.config/jira-mcp/workspaces/`** with secure 600 permissions.
+
+### Getting Your Credentials
+
+**For Jira Cloud:**
 1. Navigate to [Atlassian API Tokens](https://id.atlassian.com/manage-profile/security/api-tokens)
 2. Click **"Create API token"**
 3. Label it (e.g., "AI Assistant MCP")
 4. **Copy the token immediately** (you won't be able to view it again!)
 
+**For Jira Server/Data Center:**
+1. Generate a Personal Access Token (PAT) from your Jira Server instance
+2. Follow your organization's process for PAT creation
+3. Copy the token for use in configuration
+
 ### Adding a Workspace
 
-Configure workspaces directly through your AI assistant:
+**Recommended Method: Skeleton File (Secure)**
 
+Create a skeleton configuration file that you edit directly:
+
+```python
+# 1. Create skeleton file
+jira_workspace(
+    operation="create_workspace_skeleton",
+    workspace_name="mycompany",
+    auth_type="cloud"  # or "pat" for Server/Data Center
+)
+
+# 2. Edit the file at ~/.config/jira-mcp/workspaces/mycompany.json
+# 3. Fill in your actual credentials
+# 4. Remove the _instructions section
+# 5. Restart the MCP server
+```
+
+**Alternative: Direct Add (Programmatic)**
+
+For Jira Cloud:
 ```python
 jira_workspace(
     operation="add_workspace",
     workspace_name="mycompany",
-    site_url="mycompany.atlassian.net",  # or https://mycompany.atlassian.net
+    site_url="mycompany.atlassian.net",
     email="your.email@company.com",
-    api_token="YOUR_API_TOKEN_HERE"
+    api_token="YOUR_API_TOKEN_HERE",
+    auth_type="cloud"
+)
+```
+
+For Jira Server/Data Center:
+```python
+jira_workspace(
+    operation="add_workspace",
+    workspace_name="mycompany",
+    site_url="jira.company.com",
+    email="your.username",
+    api_token="YOUR_PERSONAL_ACCESS_TOKEN",
+    auth_type="pat"
 )
 ```
 
 The server will:
 - Validate your credentials
 - Test the connection
-- Store the configuration securely in `accounts/mycompany.json`
+- Store the configuration securely in `~/.config/jira-mcp/workspaces/mycompany.json`
 - Set it as the active workspace (if it's your first)
+
+See **[CONFIGURATION.md](CONFIGURATION.md)** for detailed setup instructions.
 
 ### Managing Workspaces
 
@@ -327,21 +373,27 @@ jira-mcp/
 │   ├── workspace_manager.py  # Multi-workspace handling
 │   ├── jira_client.py        # Jira API client wrapper
 │   └── issue_manager.py      # Issue operations (CRUD, comments, etc.)
-├── accounts/                 # Workspace configurations (gitignored)
 ├── docs/                     # Documentation
 │   ├── implementation.md     # Implementation specification
 │   ├── requirements.md       # Requirements document
 │   └── ...
 ├── pyproject.toml           # Poetry dependencies & config
 ├── poetry.lock              # Locked dependencies
+├── CONFIGURATION.md         # Detailed configuration guide
 └── README.md                # This file
+
+~/.config/jira-mcp/          # XDG config directory (created automatically)
+├── workspaces/              # Workspace configurations
+│   ├── workspace1.json
+│   └── workspace2.json
+└── active_workspace         # Currently active workspace
 ```
 
 ### MCP Tools
 
-The server exposes **3 MCP tools** with **31 total operations**:
+The server exposes **3 MCP tools** with **32 total operations**:
 
-1. **`jira_workspace`** (9 operations) - Workspace management
+1. **`jira_workspace`** (10 operations) - Workspace management (includes `create_workspace_skeleton`)
 2. **`jira_projects`** (3 operations) - Project discovery
 3. **`jira_issues`** (19 operations) - Complete issue management
 
@@ -391,36 +443,59 @@ poetry run pytest --cov=jira_mcp
 
 ## 📊 Statistics
 
-- **Total Operations**: 31 across 3 MCP tools
+- **Total Operations**: 32 across 3 MCP tools
 - **Lines of Code**: ~4,600 production code
 - **Code Quality**: 10.00/10 pylint score
 - **Test Coverage**: Manual MCP integration testing
 - **Python Version**: 3.12+
+- **Supported Platforms**: Jira Cloud + Jira Server/Data Center
 
 ## 🔒 Security
 
 ### Best Practices
 
-- **API Tokens**: Stored in local JSON files with 600 permissions
-- **No Secrets in Code**: All credentials loaded from configuration
-- **OAuth Flow**: Supports Jira API token authentication
+- **API Tokens**: Stored in `~/.config/jira-mcp/workspaces/` with 600 permissions
+- **XDG Compliance**: Configuration follows XDG Base Directory specification
+- **No Secrets in Code**: All credentials loaded from configuration files
+- **Authentication Types**: Supports both Cloud (API token) and Server/Data Center (PAT)
 - **Input Validation**: All parameters validated before API calls
 - **Error Handling**: Secure error messages without sensitive data
+- **Skeleton Workflow**: Recommended approach to avoid passing credentials through tool calls
 
 ### Workspace Storage
 
-Workspace configurations are stored in `accounts/*.json` with restricted permissions:
+Workspace configurations are stored in `~/.config/jira-mcp/workspaces/*.json` with restricted permissions:
+
+**Jira Cloud:**
 ```json
 {
   "name": "mycompany",
   "site_url": "https://mycompany.atlassian.net",
   "email": "user@company.com",
-  "api_token": "YOUR_TOKEN",
-  "created_at": "2025-11-21T10:30:00"
+  "api_token": "YOUR_API_TOKEN",
+  "auth_type": "cloud",
+  "created": "2026-02-05T07:20:00.000000",
+  "last_validated": null
 }
 ```
 
-**Important**: Add `accounts/` to your `.gitignore` to prevent credential leaks!
+**Jira Server/Data Center:**
+```json
+{
+  "name": "myserver",
+  "site_url": "https://jira.company.com",
+  "email": "username",
+  "api_token": "YOUR_PERSONAL_ACCESS_TOKEN",
+  "auth_type": "pat",
+  "created": "2026-02-05T07:20:00.000000",
+  "last_validated": null
+}
+```
+
+**Security Notes**:
+- Files are automatically created with 600 permissions (owner read/write only)
+- Configuration directory is in user's home directory, not in project repository
+- Use `create_workspace_skeleton` operation to avoid passing credentials via tool calls
 
 ## 🐛 Troubleshooting
 

@@ -30,9 +30,10 @@ class WorkspaceManager:
 
     def __init__(self):
         """Initialize workspace manager."""
-        # Workspace storage paths
-        self.accounts_dir = Path('accounts')
-        self.active_workspace_file = Path('.env.active')
+        # Workspace storage paths - use XDG config directory
+        config_home = Path.home() / '.config' / 'jira-mcp'
+        self.accounts_dir = config_home / 'workspaces'
+        self.active_workspace_file = config_home / 'active_workspace'
 
         # Workspace registry (workspace_name -> metadata)
         self._workspace_registry: Dict[str, Dict[str, Any]] = {}
@@ -40,8 +41,8 @@ class WorkspaceManager:
         # Active workspace state
         self._active_workspace_name: Optional[str] = None
 
-        # Ensure accounts directory exists
-        self.accounts_dir.mkdir(exist_ok=True)
+        # Ensure config directories exist
+        self.accounts_dir.mkdir(parents=True, exist_ok=True)
 
         # Load workspace registry
         self._load_workspace_registry()
@@ -104,12 +105,105 @@ class WorkspaceManager:
 
         return site_url
 
+    def create_workspace_skeleton(
+        self,
+        workspace_name: str,
+        auth_type: str = 'cloud'
+    ) -> Dict[str, Any]:
+        """
+        Create a skeleton workspace configuration file for user to fill in.
+
+        Args:
+            workspace_name: Unique name for this workspace
+            auth_type: Authentication type - 'cloud' or 'pat' (default: 'cloud')
+
+        Returns:
+            Dictionary with skeleton file path and instructions
+
+        Raises:
+            WorkspaceError: If validation fails or workspace already exists
+        """
+        # Validate workspace name
+        if not self.validate_workspace_name(workspace_name):
+            raise WorkspaceError(
+                f"Invalid workspace name format: {workspace_name}. "
+                "Must be alphanumeric with dashes, 1-50 characters, "
+                "not starting/ending with dash."
+            )
+
+        # Check if workspace already exists
+        if workspace_name in self._workspace_registry:
+            raise WorkspaceError(
+                f"Workspace '{workspace_name}' already exists. "
+                "Use a different name or remove the existing workspace first."
+            )
+
+        # Validate auth_type
+        if auth_type not in ('cloud', 'pat'):
+            raise WorkspaceError(f"Invalid auth_type: {auth_type}. Must be 'cloud' or 'pat'")
+
+        # Create skeleton configuration
+        if auth_type == 'cloud':
+            skeleton_config = {
+                'name': workspace_name,
+                'site_url': 'https://YOUR_COMPANY.atlassian.net',
+                'email': 'your.email@company.com',
+                'api_token': 'YOUR_JIRA_CLOUD_API_TOKEN',
+                'auth_type': 'cloud',
+                'created': datetime.now().isoformat(),
+                'last_validated': None,
+                '_instructions': {
+                    'site_url': 'Replace with your Jira Cloud site URL',
+                    'email': 'Replace with your Jira account email',
+                    'api_token': 'Get from https://id.atlassian.com/manage-profile/security/api-tokens',
+                    'note': 'Remove this _instructions section after filling in your credentials'
+                }
+            }
+        else:  # pat
+            skeleton_config = {
+                'name': workspace_name,
+                'site_url': 'https://jira.company.com',
+                'email': 'your_username',
+                'api_token': 'YOUR_PERSONAL_ACCESS_TOKEN',
+                'auth_type': 'pat',
+                'created': datetime.now().isoformat(),
+                'last_validated': None,
+                '_instructions': {
+                    'site_url': 'Replace with your Jira Server/Data Center URL',
+                    'email': 'Replace with your username (not used for PAT auth, but kept for reference)',
+                    'api_token': 'Replace with your Personal Access Token from Jira Server',
+                    'note': 'Remove this _instructions section after filling in your credentials'
+                }
+            }
+
+        # Save skeleton configuration
+        workspace_file = self.accounts_dir / f'{workspace_name}.json'
+        try:
+            with open(workspace_file, 'w', encoding='utf-8') as file_handle:
+                json.dump(skeleton_config, file_handle, indent=2)
+
+            # Set secure file permissions (600 - owner read/write only)
+            workspace_file.chmod(0o600)
+
+            logger.info("📝 Skeleton configuration created for workspace '%s'", workspace_name)
+
+        except Exception as e:
+            raise WorkspaceError(f"Failed to create skeleton configuration: {e}") from e
+
+        return {
+            'success': True,
+            'workspace_name': workspace_name,
+            'config_file': str(workspace_file),
+            'auth_type': auth_type
+        }
+
     def add_workspace(
         self,
         workspace_name: str,
         site_url: str,
         email: str,
-        api_token: str
+        api_token: str,
+        auth_type: str = 'cloud'
     ) -> Dict[str, Any]:
         """
         Add a new Jira workspace configuration.
@@ -117,8 +211,9 @@ class WorkspaceManager:
         Args:
             workspace_name: Unique name for this workspace
             site_url: Jira site URL
-            email: Email address for Jira authentication
-            api_token: Jira API token
+            email: Email address for Jira authentication (Cloud) or username (Server)
+            api_token: Jira API token (Cloud) or Personal Access Token (Server)
+            auth_type: Authentication type - 'cloud' or 'pat' (default: 'cloud')
 
         Returns:
             Dictionary with add status and workspace info
@@ -144,8 +239,12 @@ class WorkspaceManager:
         # Validate and normalize site URL
         site_url = self.validate_site_url(site_url)
 
-        # Validate email
-        if not email or '@' not in email:
+        # Validate auth_type
+        if auth_type not in ('cloud', 'pat'):
+            raise WorkspaceError(f"Invalid auth_type: {auth_type}. Must be 'cloud' or 'pat'")
+
+        # Validate email (only required for Cloud)
+        if auth_type == 'cloud' and (not email or '@' not in email):
             raise WorkspaceError(f"Invalid email address: {email}")
 
         # Validate API token
@@ -158,6 +257,7 @@ class WorkspaceManager:
             'site_url': site_url,
             'email': email,
             'api_token': api_token,  # In production, consider encryption
+            'auth_type': auth_type,
             'created': datetime.now().isoformat(),
             'last_validated': None
         }
@@ -244,7 +344,7 @@ class WorkspaceManager:
             workspace_name: Workspace name (uses active if None)
 
         Returns:
-            Dictionary with site_url, email, and api_token
+            Dictionary with site_url, email, api_token, and auth_type
 
         Raises:
             WorkspaceError: If workspace doesn't exist
@@ -263,7 +363,8 @@ class WorkspaceManager:
         return {
             'site_url': metadata['site_url'],
             'email': metadata['email'],
-            'api_token': metadata['api_token']
+            'api_token': metadata['api_token'],
+            'auth_type': metadata.get('auth_type', 'cloud')  # Default to cloud for backward compatibility
         }
 
     def switch_workspace(self, workspace_name: str) -> Dict[str, Any]:

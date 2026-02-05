@@ -36,6 +36,30 @@ class IssueManager:
         self.jira = jira_client
         self.site_url = site_url.rstrip('/')
 
+    def _get_user_attribute(self, user_obj: Any, cloud_attr: str, server_attr: str, default: Any = None) -> Any:
+        """
+        Safely get user attribute that may differ between Cloud and Server.
+
+        Args:
+            user_obj: User object from Jira API
+            cloud_attr: Attribute name in Jira Cloud
+            server_attr: Attribute name in Jira Server/Data Center
+            default: Default value if attribute not found
+
+        Returns:
+            Attribute value or default
+        """
+        if user_obj is None:
+            return default
+        # Try Cloud attribute first
+        if hasattr(user_obj, cloud_attr):
+            return getattr(user_obj, cloud_attr)
+        # Try Server attribute
+        if hasattr(user_obj, server_attr):
+            return getattr(user_obj, server_attr)
+        # Return default
+        return default
+
     def search_issues(
         self,
         jql: str,
@@ -417,8 +441,8 @@ class IssueManager:
         # Add assignee info
         if hasattr(fields, 'assignee') and fields.assignee:
             issue_data['assignee'] = {
-                'name': fields.assignee.displayName,
-                'account_id': fields.assignee.accountId
+                'name': self._get_user_attribute(fields.assignee, 'displayName', 'displayName', 'Unknown'),
+                'account_id': self._get_user_attribute(fields.assignee, 'accountId', 'name', 'N/A')
             }
         else:
             issue_data['assignee'] = None
@@ -426,8 +450,8 @@ class IssueManager:
         # Add reporter info
         if hasattr(fields, 'reporter') and fields.reporter:
             issue_data['reporter'] = {
-                'name': fields.reporter.displayName,
-                'account_id': fields.reporter.accountId
+                'name': self._get_user_attribute(fields.reporter, 'displayName', 'displayName', 'Unknown'),
+                'account_id': self._get_user_attribute(fields.reporter, 'accountId', 'name', 'N/A')
             }
         else:
             issue_data['reporter'] = None
@@ -484,8 +508,8 @@ class IssueManager:
                     'id': comment.id,
                     'body': comment.body,
                     'author': {
-                        'name': comment.author.displayName,
-                        'account_id': comment.author.accountId
+                        'name': self._get_user_attribute(comment.author, 'displayName', 'displayName', 'Unknown'),
+                        'account_id': self._get_user_attribute(comment.author, 'accountId', 'name', 'N/A')
                     },
                     'created': str(comment.created),
                     'updated': str(comment.updated)
@@ -528,8 +552,8 @@ class IssueManager:
                 'id': comment.id,
                 'body': comment.body,
                 'author': {
-                    'name': comment.author.displayName,
-                    'account_id': comment.author.accountId
+                    'name': self._get_user_attribute(comment.author, 'displayName', 'displayName', 'Unknown'),
+                    'account_id': self._get_user_attribute(comment.author, 'accountId', 'name', 'N/A')
                 },
                 'created': str(comment.created),
                 'updated': str(comment.updated)
@@ -580,8 +604,8 @@ class IssueManager:
                 'id': comment.id,
                 'body': comment.body,
                 'author': {
-                    'name': comment.author.displayName,
-                    'account_id': comment.author.accountId
+                    'name': self._get_user_attribute(comment.author, 'displayName', 'displayName', 'Unknown'),
+                    'account_id': self._get_user_attribute(comment.author, 'accountId', 'name', 'N/A')
                 },
                 'created': str(comment.created),
                 'updated': str(comment.updated)
@@ -655,8 +679,8 @@ class IssueManager:
                     'mime_type': getattr(attachment, 'mimeType', 'unknown'),
                     'created': str(attachment.created),
                     'author': {
-                        'name': attachment.author.displayName,
-                        'account_id': attachment.author.accountId
+                        'name': self._get_user_attribute(attachment.author, 'displayName', 'displayName', 'Unknown'),
+                        'account_id': self._get_user_attribute(attachment.author, 'accountId', 'name', 'N/A')
                     },
                     'content_url': attachment.content
                 }
@@ -704,8 +728,8 @@ class IssueManager:
                 'mime_type': getattr(attachment, 'mimeType', 'unknown'),
                 'created': str(attachment.created),
                 'author': {
-                    'name': attachment.author.displayName,
-                    'account_id': attachment.author.accountId
+                    'name': self._get_user_attribute(attachment.author, 'displayName', 'displayName', 'Unknown'),
+                    'account_id': self._get_user_attribute(attachment.author, 'accountId', 'name', 'N/A')
                 },
                 'content_url': attachment.content
             }
@@ -967,8 +991,8 @@ class IssueManager:
                 # Add assignee if present
                 if hasattr(subtask.fields, 'assignee') and subtask.fields.assignee:
                     subtask_data['assignee'] = {
-                        'name': subtask.fields.assignee.displayName,
-                        'account_id': subtask.fields.assignee.accountId
+                        'name': self._get_user_attribute(subtask.fields.assignee, 'displayName', 'displayName', 'Unknown'),
+                        'account_id': self._get_user_attribute(subtask.fields.assignee, 'accountId', 'name', 'N/A')
                     }
                 else:
                     subtask_data['assignee'] = None

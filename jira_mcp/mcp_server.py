@@ -62,8 +62,10 @@ class JiraMCPServer:
                     name="jira_workspace",
                     description=(
                         "Perform Jira workspace operations: workspace management and connectivity testing.\n\n"
+                        "**Configuration Location**: ~/.config/jira-mcp/workspaces/\n\n"
                         "Workspace Management:\n"
-                        "- add_workspace: Configure new Jira instance (name, site_url, email, api_token)\n"
+                        "- create_workspace_skeleton: Create skeleton config file for user to fill in (RECOMMENDED)\n"
+                        "- add_workspace: Directly add workspace with credentials (programmatic use)\n"
                         "- list_workspaces: Show all configured workspaces with active indicator\n"
                         "- get_active_workspace: Display current workspace details\n"
                         "- switch_workspace: Change active workspace\n"
@@ -73,7 +75,8 @@ class JiraMCPServer:
                         "- hello: Test MCP server and Jira API connectivity\n"
                         "- get_current_user: Get authenticated user info from active workspace\n"
                         "- search_users: Find users by name/email for assignment\n\n"
-                        "URL Format: https://yourcompany.atlassian.net"
+                        "**Recommended Workflow**: Use create_workspace_skeleton to generate a config file, "
+                        "then manually edit it with credentials rather than passing sensitive data through tool calls."
                     ),
                     inputSchema={
                         "type": "object",
@@ -83,6 +86,7 @@ class JiraMCPServer:
                                 "type": "string",
                                 "enum": [
                                     "hello",
+                                    "create_workspace_skeleton",
                                     "add_workspace",
                                     "list_workspaces",
                                     "get_active_workspace",
@@ -109,6 +113,11 @@ class JiraMCPServer:
                             "api_token": {
                                 "type": "string",
                                 "description": "Jira API token (for add_workspace) - get from https://id.atlassian.com/manage-profile/security/api-tokens"
+                            },
+                            "auth_type": {
+                                "type": "string",
+                                "enum": ["cloud", "pat"],
+                                "description": "Authentication type (for add_workspace) - 'cloud' for Jira Cloud (email+token), 'pat' for Jira Server/Data Center (Personal Access Token). Default: 'cloud'"
                             },
                             "query": {
                                 "type": "string",
@@ -349,7 +358,7 @@ class JiraMCPServer:
                     type="text",
                     text=(
                         "❌ **Parameter Error**: Missing required parameter 'operation'\n\n"
-                        "Available operations: hello, add_workspace, list_workspaces, "
+                        "Available operations: hello, create_workspace_skeleton, add_workspace, list_workspaces, "
                         "get_active_workspace, switch_workspace, validate_workspace, "
                         "remove_workspace, get_current_user, search_users"
                     )
@@ -359,6 +368,8 @@ class JiraMCPServer:
         # Route to handlers
         if operation == "hello":
             return await self._handle_hello(arguments)
+        if operation == "create_workspace_skeleton":
+            return await self._handle_create_workspace_skeleton(arguments)
         if operation == "add_workspace":
             return await self._handle_add_workspace(arguments)
         if operation == "list_workspaces":
@@ -380,7 +391,7 @@ class JiraMCPServer:
             types.TextContent(
                 type="text",
                 text=f"❌ **Invalid Operation**: '{operation}'\n\n"
-                     "Available operations: hello, add_workspace, list_workspaces, "
+                     "Available operations: hello, create_workspace_skeleton, add_workspace, list_workspaces, "
                      "get_active_workspace, switch_workspace, validate_workspace, "
                      "remove_workspace, get_current_user, search_users"
             )
@@ -417,7 +428,8 @@ class JiraMCPServer:
                 jira_client = JiraClient(
                     credentials['site_url'],
                     credentials['email'],
-                    credentials['api_token']
+                    credentials['api_token'],
+                    credentials['auth_type']
                 )
 
                 server_info = jira_client.test_connection()
@@ -465,6 +477,74 @@ class JiraMCPServer:
                 )
             ]
 
+    async def _handle_create_workspace_skeleton(self, arguments: Dict[str, Any]) -> List[types.TextContent]:
+        """Handle create_workspace_skeleton operation - create skeleton config file."""
+        try:
+            workspace_name = arguments.get("workspace_name")
+            auth_type = arguments.get("auth_type", "cloud")
+
+            # Validate required parameters
+            if not workspace_name:
+                return [
+                    types.TextContent(
+                        type="text",
+                        text=(
+                            "❌ **Missing Required Parameters**\n\n"
+                            "Required: workspace_name\n"
+                            "Optional: auth_type ('cloud' or 'pat', default: 'cloud')\n\n"
+                            "Example:\n"
+                            "```\n"
+                            "jira_workspace(operation=\"create_workspace_skeleton\", "
+                            "workspace_name=\"example\", "
+                            "auth_type=\"pat\")\n"
+                            "```"
+                        )
+                    )
+                ]
+
+            # Create skeleton configuration
+            result = self.workspace_manager.create_workspace_skeleton(
+                workspace_name, auth_type
+            )
+
+            return [
+                types.TextContent(
+                    type="text",
+                    text=(
+                        f"📝 **Skeleton Configuration Created**\n\n"
+                        f"**Workspace**: {result['workspace_name']}\n"
+                        f"**Auth Type**: {result['auth_type']}\n"
+                        f"**Config File**: `{result['config_file']}`\n\n"
+                        "**Next Steps**:\n"
+                        "1. Edit the configuration file with your credentials:\n"
+                        f"   ```\n"
+                        f"   {result['config_file']}\n"
+                        f"   ```\n"
+                        "2. Replace placeholder values with your actual credentials\n"
+                        "3. Remove the `_instructions` section from the file\n"
+                        "4. The workspace will be automatically loaded on next server restart\n\n"
+                        "**Security**: The file has been created with 600 permissions (owner read/write only)."
+                    )
+                )
+            ]
+
+        except WorkspaceError as e:
+            logger.error("Workspace error in create_workspace_skeleton: %s", e)
+            return [
+                types.TextContent(
+                    type="text",
+                    text=f"❌ **Workspace Error**: {str(e)}"
+                )
+            ]
+        except Exception as error:
+            logger.error("Error in create_workspace_skeleton operation: %s", error)
+            return [
+                types.TextContent(
+                    type="text",
+                    text=f"❌ **Error**: {str(error)}"
+                )
+            ]
+
     async def _handle_add_workspace(self, arguments: Dict[str, Any]) -> List[types.TextContent]:
         """Handle add_workspace operation."""
         try:
@@ -472,6 +552,7 @@ class JiraMCPServer:
             site_url = arguments.get("site_url")
             email = arguments.get("email")
             api_token = arguments.get("api_token")
+            auth_type = arguments.get("auth_type", "cloud")  # Default to cloud
 
             # Validate required parameters
             if not all([workspace_name, site_url, email, api_token]):
@@ -480,14 +561,24 @@ class JiraMCPServer:
                         type="text",
                         text=(
                             "❌ **Missing Required Parameters**\n\n"
-                            "Required: workspace_name, site_url, email, api_token\n\n"
-                            "Example:\n"
+                            "Required: workspace_name, site_url, email, api_token\n"
+                            "Optional: auth_type ('cloud' or 'pat', default: 'cloud')\n\n"
+                            "Example (Jira Cloud):\n"
                             "```\n"
                             "jira_workspace(operation=\"add_workspace\", "
                             "workspace_name=\"mycompany\", "
                             "site_url=\"mycompany.atlassian.net\", "
                             "email=\"your.email@company.com\", "
                             "api_token=\"YOUR_API_TOKEN\")\n"
+                            "```\n\n"
+                            "Example (Jira Server/Data Center with PAT):\n"
+                            "```\n"
+                            "jira_workspace(operation=\"add_workspace\", "
+                            "workspace_name=\"mycompany\", "
+                            "site_url=\"jira.company.com\", "
+                            "email=\"username\", "
+                            "api_token=\"YOUR_PERSONAL_ACCESS_TOKEN\", "
+                            "auth_type=\"pat\")\n"
                             "```\n\n"
                             "Get your API token from: https://id.atlassian.com/manage-profile/security/api-tokens"
                         )
@@ -496,12 +587,12 @@ class JiraMCPServer:
 
             # Add workspace
             result = self.workspace_manager.add_workspace(
-                workspace_name, site_url, email, api_token
+                workspace_name, site_url, email, api_token, auth_type
             )
 
             # Test connection
             try:
-                jira_client = JiraClient(result['site_url'], result['email'], api_token)
+                jira_client = JiraClient(result['site_url'], result['email'], api_token, auth_type)
                 server_info = jira_client.test_connection()
 
                 return [
@@ -714,7 +805,8 @@ class JiraMCPServer:
             jira_client = JiraClient(
                 credentials['site_url'],
                 credentials['email'],
-                credentials['api_token']
+                credentials['api_token'],
+                credentials['auth_type']
             )
 
             server_info = jira_client.test_connection()
@@ -803,7 +895,8 @@ class JiraMCPServer:
             jira_client = JiraClient(
                 credentials['site_url'],
                 credentials['email'],
-                credentials['api_token']
+                credentials['api_token'],
+                credentials['auth_type']
             )
 
             user_info = jira_client.get_current_user()
@@ -859,7 +952,8 @@ class JiraMCPServer:
             jira_client = JiraClient(
                 credentials['site_url'],
                 credentials['email'],
-                credentials['api_token']
+                credentials['api_token'],
+                credentials['auth_type']
             )
 
             users = jira_client.search_users(query, max_results)
@@ -948,7 +1042,8 @@ class JiraMCPServer:
             jira_client = JiraClient(
                 credentials['site_url'],
                 credentials['email'],
-                credentials['api_token']
+                credentials['api_token'],
+                credentials['auth_type']
             )
 
             projects = jira_client.get_projects()
@@ -1016,7 +1111,8 @@ class JiraMCPServer:
             jira_client = JiraClient(
                 credentials['site_url'],
                 credentials['email'],
-                credentials['api_token']
+                credentials['api_token'],
+                credentials['auth_type']
             )
 
             # Get project details
@@ -1075,7 +1171,8 @@ class JiraMCPServer:
             jira_client = JiraClient(
                 credentials['site_url'],
                 credentials['email'],
-                credentials['api_token']
+                credentials['api_token'],
+                credentials['auth_type']
             )
 
             # Get project to access issue types
@@ -1216,7 +1313,8 @@ class JiraMCPServer:
             jira_client = JiraClient(
                 credentials['site_url'],
                 credentials['email'],
-                credentials['api_token']
+                credentials['api_token'],
+                credentials['auth_type']
             )
 
             issue_manager = IssueManager(jira_client.jira, credentials['site_url'])
@@ -1287,7 +1385,8 @@ class JiraMCPServer:
             jira_client = JiraClient(
                 credentials['site_url'],
                 credentials['email'],
-                credentials['api_token']
+                credentials['api_token'],
+                credentials['auth_type']
             )
 
             issue_manager = IssueManager(jira_client.jira, credentials['site_url'])
@@ -1361,7 +1460,8 @@ class JiraMCPServer:
             jira_client = JiraClient(
                 credentials['site_url'],
                 credentials['email'],
-                credentials['api_token']
+                credentials['api_token'],
+                credentials['auth_type']
             )
 
             issue_manager = IssueManager(jira_client.jira, credentials['site_url'])
@@ -1434,7 +1534,8 @@ class JiraMCPServer:
             jira_client = JiraClient(
                 credentials['site_url'],
                 credentials['email'],
-                credentials['api_token']
+                credentials['api_token'],
+                credentials['auth_type']
             )
 
             issue_manager = IssueManager(jira_client.jira, credentials['site_url'])
@@ -1507,7 +1608,8 @@ class JiraMCPServer:
             jira_client = JiraClient(
                 credentials['site_url'],
                 credentials['email'],
-                credentials['api_token']
+                credentials['api_token'],
+                credentials['auth_type']
             )
 
             issue_manager = IssueManager(jira_client.jira, credentials['site_url'])
@@ -1564,7 +1666,8 @@ class JiraMCPServer:
             jira_client = JiraClient(
                 credentials['site_url'],
                 credentials['email'],
-                credentials['api_token']
+                credentials['api_token'],
+                credentials['auth_type']
             )
 
             issue_manager = IssueManager(jira_client.jira, credentials['site_url'])
@@ -1620,7 +1723,8 @@ class JiraMCPServer:
             jira_client = JiraClient(
                 credentials['site_url'],
                 credentials['email'],
-                credentials['api_token']
+                credentials['api_token'],
+                credentials['auth_type']
             )
 
             issue_manager = IssueManager(jira_client.jira, credentials['site_url'])
@@ -1682,7 +1786,8 @@ class JiraMCPServer:
             jira_client = JiraClient(
                 credentials['site_url'],
                 credentials['email'],
-                credentials['api_token']
+                credentials['api_token'],
+                credentials['auth_type']
             )
 
             issue_manager = IssueManager(jira_client.jira, credentials['site_url'])
@@ -1753,7 +1858,8 @@ class JiraMCPServer:
             jira_client = JiraClient(
                 credentials['site_url'],
                 credentials['email'],
-                credentials['api_token']
+                credentials['api_token'],
+                credentials['auth_type']
             )
 
             issue_manager = IssueManager(jira_client.jira, credentials['site_url'])
@@ -1813,7 +1919,8 @@ class JiraMCPServer:
             jira_client = JiraClient(
                 credentials['site_url'],
                 credentials['email'],
-                credentials['api_token']
+                credentials['api_token'],
+                credentials['auth_type']
             )
 
             issue_manager = IssueManager(jira_client.jira, credentials['site_url'])
@@ -1872,7 +1979,8 @@ class JiraMCPServer:
             jira_client = JiraClient(
                 credentials['site_url'],
                 credentials['email'],
-                credentials['api_token']
+                credentials['api_token'],
+                credentials['auth_type']
             )
 
             issue_manager = IssueManager(jira_client.jira, credentials['site_url'])
@@ -1925,7 +2033,8 @@ class JiraMCPServer:
             jira_client = JiraClient(
                 credentials['site_url'],
                 credentials['email'],
-                credentials['api_token']
+                credentials['api_token'],
+                credentials['auth_type']
             )
 
             issue_manager = IssueManager(jira_client.jira, credentials['site_url'])
@@ -1998,7 +2107,8 @@ class JiraMCPServer:
             jira_client = JiraClient(
                 credentials['site_url'],
                 credentials['email'],
-                credentials['api_token']
+                credentials['api_token'],
+                credentials['auth_type']
             )
 
             issue_manager = IssueManager(jira_client.jira, credentials['site_url'])
@@ -2057,7 +2167,8 @@ class JiraMCPServer:
             jira_client = JiraClient(
                 credentials['site_url'],
                 credentials['email'],
-                credentials['api_token']
+                credentials['api_token'],
+                credentials['auth_type']
             )
 
             issue_manager = IssueManager(jira_client.jira, credentials['site_url'])
@@ -2114,7 +2225,8 @@ class JiraMCPServer:
             jira_client = JiraClient(
                 credentials['site_url'],
                 credentials['email'],
-                credentials['api_token']
+                credentials['api_token'],
+                credentials['auth_type']
             )
 
             issue_manager = IssueManager(jira_client.jira, credentials['site_url'])
@@ -2170,7 +2282,8 @@ class JiraMCPServer:
             jira_client = JiraClient(
                 credentials['site_url'],
                 credentials['email'],
-                credentials['api_token']
+                credentials['api_token'],
+                credentials['auth_type']
             )
 
             issue_manager = IssueManager(jira_client.jira, credentials['site_url'])
@@ -2223,7 +2336,8 @@ class JiraMCPServer:
             jira_client = JiraClient(
                 credentials['site_url'],
                 credentials['email'],
-                credentials['api_token']
+                credentials['api_token'],
+                credentials['auth_type']
             )
 
             issue_manager = IssueManager(jira_client.jira, credentials['site_url'])
@@ -2293,7 +2407,8 @@ class JiraMCPServer:
             jira_client = JiraClient(
                 credentials['site_url'],
                 credentials['email'],
-                credentials['api_token']
+                credentials['api_token'],
+                credentials['auth_type']
             )
 
             issue_manager = IssueManager(jira_client.jira, credentials['site_url'])
@@ -2359,7 +2474,8 @@ class JiraMCPServer:
             jira_client = JiraClient(
                 credentials['site_url'],
                 credentials['email'],
-                credentials['api_token']
+                credentials['api_token'],
+                credentials['auth_type']
             )
 
             issue_manager = IssueManager(jira_client.jira, credentials['site_url'])
