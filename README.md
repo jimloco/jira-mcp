@@ -1,3 +1,9 @@
+---
+> ⚠️ **IMPORTANT DISCLAIMER**
+>
+> This code is **100% AI-generated**. Use at your own risk. The authors make no guarantees about the reliability, security, or fitness for any particular purpose. Thoroughly review and test all code before using in production environments.
+---
+
 # Jira MCP Server
 
 > **Enterprise-grade Model Context Protocol server for comprehensive Jira Cloud integration**
