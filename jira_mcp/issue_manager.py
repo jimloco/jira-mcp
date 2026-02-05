@@ -425,7 +425,7 @@ class IssueManager:
         """
         fields = issue.fields
 
-        # Basic issue data
+        # Basic issue data (always included)
         issue_data = {
             'key': issue.key,
             'id': issue.id,
@@ -462,6 +462,54 @@ class IssueManager:
         else:
             issue_data['priority'] = None
 
+        # Dynamically extract all other fields from the issue
+        # Get all field names from the fields object
+        all_field_names = dir(fields)
+        
+        # Fields to skip (already handled above or internal/complex)
+        skip_fields = {
+            'summary', 'status', 'issuetype', 'project', 'created', 'updated',
+            'assignee', 'reporter', 'priority', 'description', 'labels', 
+            'components', 'fixVersions', 'versions', 'comment', 'attachment',
+            'worklog', 'issuelinks', 'subtasks', 'watches', 'votes'
+        }
+        
+        # Additional metadata dictionary for other fields
+        issue_data['additional_fields'] = {}
+        
+        for field_name in all_field_names:
+            # Skip private attributes, methods, and already-handled fields
+            if field_name.startswith('_') or field_name in skip_fields:
+                continue
+                
+            try:
+                field_value = getattr(fields, field_name, None)
+                
+                # Skip None values and callable methods
+                if field_value is None or callable(field_value):
+                    continue
+                
+                # Handle different field types
+                if hasattr(field_value, 'name'):
+                    # Objects with name attribute (status, priority, etc.)
+                    issue_data['additional_fields'][field_name] = field_value.name
+                elif isinstance(field_value, (str, int, float, bool)):
+                    # Simple types
+                    issue_data['additional_fields'][field_name] = field_value
+                elif isinstance(field_value, list) and len(field_value) > 0:
+                    # Lists - try to extract names if objects
+                    if hasattr(field_value[0], 'name'):
+                        issue_data['additional_fields'][field_name] = [item.name for item in field_value]
+                    else:
+                        issue_data['additional_fields'][field_name] = [str(item) for item in field_value]
+                else:
+                    # Convert to string for other types
+                    issue_data['additional_fields'][field_name] = str(field_value)
+                    
+            except (AttributeError, TypeError):
+                # Skip fields that can't be accessed or converted
+                continue
+
         # Add full details if requested
         if full_details:
             issue_data['description'] = getattr(fields, 'description', None) or ''
@@ -480,6 +528,12 @@ class IssueManager:
                 issue_data['fix_versions'] = [v.name for v in fields.fixVersions]
             else:
                 issue_data['fix_versions'] = []
+
+            # Add affected versions
+            if hasattr(fields, 'versions') and fields.versions:
+                issue_data['affected_versions'] = [v.name for v in fields.versions]
+            else:
+                issue_data['affected_versions'] = []
 
         return issue_data
 

@@ -186,6 +186,11 @@ class JiraMCPServer:
                         "Subtask Operations:\n"
                         "- create_subtask: Create a subtask under a parent issue\n"
                         "- list_subtasks: Get all subtasks for an issue\n\n"
+                        "**Additional Fields**: For create/update operations, you can pass ANY Jira field as additional parameters:\n"
+                        "- Standard fields: duedate='2026-04-30', environment='Production', resolution='Fixed'\n"
+                        "- Custom fields: customfield_12001='value', customfield_24320='Yes'\n"
+                        "- Time tracking: timeoriginalestimate='3600', timeestimate='1800'\n"
+                        "Example: jira_issues(operation='update', issue_key='HIW-144', duedate='2026-04-30', environment='Staging')\n\n"
                         "Use this tool for complete issue lifecycle management."
                     ),
                     inputSchema={
@@ -289,7 +294,7 @@ class JiraMCPServer:
                                 "description": "Parent issue key (for create_subtask) - e.g., 'ENG-123'"
                             }
                         },
-                        "additionalProperties": False
+                        "additionalProperties": True
                     }
                 )
             ]
@@ -1402,9 +1407,44 @@ class JiraMCPServer:
                 f"**Assignee**: {issue['assignee']['name'] if issue['assignee'] else 'Unassigned'}\n"
                 f"**Reporter**: {issue['reporter']['name'] if issue['reporter'] else 'Unknown'}\n"
                 f"**Created**: {issue['created']}\n"
-                f"**Updated**: {issue['updated']}\n\n"
-                f"**Description**:\n{issue.get('description', 'No description')}\n\n"
+                f"**Updated**: {issue['updated']}\n"
             )
+            
+            # Add additional fields dynamically
+            if issue.get('additional_fields'):
+                additional = issue['additional_fields']
+                
+                # Common important fields to show first
+                priority_fields = ['duedate', 'resolutiondate', 'resolution', 'environment', 
+                                 'timeoriginalestimate', 'timeestimate', 'timespent']
+                
+                for field_name in priority_fields:
+                    if field_name in additional and additional[field_name]:
+                        # Format field name for display
+                        display_name = field_name.replace('_', ' ').title()
+                        if field_name == 'duedate':
+                            display_name = 'Due Date'
+                        elif field_name == 'resolutiondate':
+                            display_name = 'Resolution Date'
+                        elif field_name == 'timeoriginalestimate':
+                            display_name = 'Original Estimate'
+                        elif field_name == 'timeestimate':
+                            display_name = 'Remaining Estimate'
+                        elif field_name == 'timespent':
+                            display_name = 'Time Spent'
+                        
+                        result += f"**{display_name}**: {additional[field_name]}\n"
+                
+                # Show other additional fields
+                for field_name, field_value in additional.items():
+                    if field_name not in priority_fields and field_value:
+                        display_name = field_name.replace('_', ' ').title()
+                        if isinstance(field_value, list):
+                            result += f"**{display_name}**: {', '.join(str(v) for v in field_value)}\n"
+                        else:
+                            result += f"**{display_name}**: {field_value}\n"
+            
+            result += f"\n**Description**:\n{issue.get('description', 'No description')}\n\n"
 
             if issue.get('labels'):
                 result += f"**Labels**: {', '.join(issue['labels'])}\n"
@@ -1546,6 +1586,10 @@ class JiraMCPServer:
             assignee = arguments.get("assignee")
             priority = arguments.get("priority")
             labels = arguments.get("labels")
+            
+            # Extract additional fields (like duedate, custom fields, etc.)
+            known_fields = {'operation', 'issue_key', 'summary', 'description', 'assignee', 'priority', 'labels'}
+            additional_fields = {k: v for k, v in arguments.items() if k not in known_fields}
 
             issue = issue_manager.update_issue(
                 issue_key=issue_key,
@@ -1553,7 +1597,8 @@ class JiraMCPServer:
                 description=description,
                 assignee=assignee,
                 priority=priority,
-                labels=labels
+                labels=labels,
+                **additional_fields
             )
 
             result = (

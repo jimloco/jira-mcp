@@ -84,11 +84,9 @@ def load_config(workspace_name: Optional[str] = None) -> Dict[str, str]:
     config_manager = ConfigManager(workspace_name=workspace_name)
 
     # For Phase 1, allow running without .env file
+    # Workspaces are now managed via ~/.config/jira-mcp/ (XDG standard)
     if not config_manager.env_file_path.exists():
-        logger.warning("⚠️  No .env file found - using default configuration")
-        logger.warning("⚠️  Configure workspaces using jira_workspace(operation='add_workspace')")
-
-        # Return default configuration for Phase 1
+        # Return default configuration - no warning needed
         return {
             'MCP_SERVER_NAME': 'jira-mcp',
             'MCP_SERVER_VERSION': '0.1.0',

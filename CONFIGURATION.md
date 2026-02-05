@@ -7,8 +7,8 @@ All configuration files are stored in `~/.config/jira-mcp/`:
 ```
 ~/.config/jira-mcp/
 ├── workspaces/          # Workspace configuration files
-│   ├── intuit.json
-│   └── mycompany.json
+│   ├── mycompany.json
+│   └── acme.json
 └── active_workspace     # Currently active workspace name
 ```
 
@@ -20,14 +20,14 @@ All configuration files are stored in `~/.config/jira-mcp/`:
    ```python
    jira_workspace(
        operation="create_workspace_skeleton",
-       workspace_name="intuit",
+       workspace_name="myserver",
        auth_type="pat"  # or "cloud" for Jira Cloud
    )
    ```
 
-2. **Edit the generated file** at `~/.config/jira-mcp/workspaces/intuit.json`:
+2. **Edit the generated file** at `~/.config/jira-mcp/workspaces/myserver.json`:
    ```bash
-   vim ~/.config/jira-mcp/workspaces/intuit.json
+   vim ~/.config/jira-mcp/workspaces/myserver.json
    ```
 
 3. **Fill in your credentials**:
@@ -35,9 +35,9 @@ All configuration files are stored in `~/.config/jira-mcp/`:
    For **Jira Server/Data Center (PAT)**:
    ```json
    {
-     "name": "intuit",
-     "site_url": "https://jira.intuit.com",
-     "email": "james_hull@intuit.com",
+     "name": "myserver",
+     "site_url": "https://jira.company.com",
+     "email": "your.username",
      "api_token": "YOUR_PERSONAL_ACCESS_TOKEN",
      "auth_type": "pat",
      "created": "2026-02-05T07:16:00.000000",
@@ -69,9 +69,9 @@ Only use this if you're scripting or automating workspace creation:
 ```python
 jira_workspace(
     operation="add_workspace",
-    workspace_name="intuit",
-    site_url="https://jira.intuit.com",
-    email="james_hull@intuit.com",
+    workspace_name="myserver",
+    site_url="https://jira.company.com",
+    email="your.username",
     api_token="YOUR_PERSONAL_ACCESS_TOKEN",
     auth_type="pat"
 )
@@ -102,7 +102,7 @@ jira_workspace(operation="list_workspaces")
 ```python
 jira_workspace(
     operation="switch_workspace",
-    workspace_name="intuit"
+    workspace_name="myserver"
 )
 ```
 
@@ -110,7 +110,7 @@ jira_workspace(
 ```python
 jira_workspace(
     operation="validate_workspace",
-    workspace_name="intuit"
+    workspace_name="myserver"
 )
 ```
 
@@ -118,7 +118,7 @@ jira_workspace(
 ```python
 jira_workspace(
     operation="remove_workspace",
-    workspace_name="intuit"
+    workspace_name="myserver"
 )
 ```
 
@@ -141,14 +141,14 @@ chmod 600 ~/.config/jira-mcp/workspaces/*.json
 ### Workspace not loading
 1. Check file exists: `ls ~/.config/jira-mcp/workspaces/`
 2. Check file permissions: `ls -la ~/.config/jira-mcp/workspaces/`
-3. Validate JSON syntax: `cat ~/.config/jira-mcp/workspaces/intuit.json | python -m json.tool`
+3. Validate JSON syntax: `cat ~/.config/jira-mcp/workspaces/myserver.json | python -m json.tool`
 4. Restart MCP server (close and reopen Windsurf)
 
 ### Authentication failures
 1. Verify auth_type matches your Jira instance (Cloud vs Server)
 2. For PAT: Ensure token is valid and not expired
 3. For Cloud: Verify email and API token are correct
-4. Test connection: `jira_workspace(operation="validate_workspace", workspace_name="intuit")`
+4. Test connection: `jira_workspace(operation="validate_workspace", workspace_name="myserver")`
 
 ### Multiple workspaces
 - Only one workspace can be active at a time
