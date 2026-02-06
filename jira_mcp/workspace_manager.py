@@ -197,7 +197,7 @@ class WorkspaceManager:
             'auth_type': auth_type
         }
 
-    def add_workspace(
+    def add_workspace(  # pylint: disable=too-many-positional-arguments
         self,
         workspace_name: str,
         site_url: str,

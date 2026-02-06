@@ -7,9 +7,11 @@ error handling, and logging.
 """
 
 import logging
-from typing import Dict, Optional, Any
+from typing import Any, Dict, Optional
 from jira import JIRA
 from jira.exceptions import JIRAError
+
+from .utils import get_user_attribute
 
 # Configure logging
 logger = logging.getLogger(__name__)
@@ -115,28 +117,6 @@ class JiraClient:
             logger.error("❌ %s", error_msg)
             raise JiraClientError(error_msg) from e
 
-    def _get_user_attribute(self, user_obj: Any, cloud_attr: str, server_attr: str, default: Any = None) -> Any:
-        """
-        Safely get user attribute that may differ between Cloud and Server.
-
-        Args:
-            user_obj: User object from Jira API
-            cloud_attr: Attribute name in Jira Cloud
-            server_attr: Attribute name in Jira Server/Data Center
-            default: Default value if attribute not found
-
-        Returns:
-            Attribute value or default
-        """
-        # Try Cloud attribute first
-        if hasattr(user_obj, cloud_attr):
-            return getattr(user_obj, cloud_attr)
-        # Try Server attribute
-        if hasattr(user_obj, server_attr):
-            return getattr(user_obj, server_attr)
-        # Return default
-        return default
-
     def get_current_user(self) -> Dict[str, Any]:
         """
         Get current authenticated user information.
@@ -155,10 +135,10 @@ class JiraClient:
             user_info = self._jira.user(user)
 
             return {
-                'account_id': self._get_user_attribute(user_info, 'accountId', 'name', 'N/A'),
-                'email': self._get_user_attribute(user_info, 'emailAddress', 'emailAddress', 'N/A'),
-                'display_name': self._get_user_attribute(user_info, 'displayName', 'displayName', 'Unknown'),
-                'active': self._get_user_attribute(user_info, 'active', 'active', True)
+                'account_id': get_user_attribute(user_info, 'accountId', 'name', 'N/A'),
+                'email': get_user_attribute(user_info, 'emailAddress', 'emailAddress', 'N/A'),
+                'display_name': get_user_attribute(user_info, 'displayName', 'displayName', 'Unknown'),
+                'active': get_user_attribute(user_info, 'active', 'active', True)
             }
 
         except JIRAError as e:
@@ -192,10 +172,10 @@ class JiraClient:
             user_list = []
             for user in users:
                 user_list.append({
-                    'account_id': self._get_user_attribute(user, 'accountId', 'name', 'N/A'),
-                    'email': self._get_user_attribute(user, 'emailAddress', 'emailAddress', 'N/A'),
-                    'display_name': self._get_user_attribute(user, 'displayName', 'displayName', 'Unknown'),
-                    'active': self._get_user_attribute(user, 'active', 'active', True)
+                    'account_id': get_user_attribute(user, 'accountId', 'name', 'N/A'),
+                    'email': get_user_attribute(user, 'emailAddress', 'emailAddress', 'N/A'),
+                    'display_name': get_user_attribute(user, 'displayName', 'displayName', 'Unknown'),
+                    'active': get_user_attribute(user, 'active', 'active', True)
                 })
 
             return user_list

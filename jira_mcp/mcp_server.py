@@ -117,7 +117,10 @@ class JiraMCPServer:
                             "auth_type": {
                                 "type": "string",
                                 "enum": ["cloud", "pat"],
-                                "description": "Authentication type (for add_workspace) - 'cloud' for Jira Cloud (email+token), 'pat' for Jira Server/Data Center (Personal Access Token). Default: 'cloud'"
+                                "description": (
+                                    "Authentication type (for add_workspace) - 'cloud' for Jira Cloud (email+token), "
+                                    "'pat' for Jira Server/Data Center (Personal Access Token). Default: 'cloud'"
+                                )
                             },
                             "query": {
                                 "type": "string",
@@ -1371,6 +1374,56 @@ class JiraMCPServer:
                 )
             ]
 
+    def _format_field_display_name(self, field_name: str) -> str:
+        """
+        Format field name for display.
+
+        Args:
+            field_name: Raw field name
+
+        Returns:
+            Formatted display name
+        """
+        display_mapping = {
+            'duedate': 'Due Date',
+            'resolutiondate': 'Resolution Date',
+            'timeoriginalestimate': 'Original Estimate',
+            'timeestimate': 'Remaining Estimate',
+            'timespent': 'Time Spent'
+        }
+        return display_mapping.get(field_name, field_name.replace('_', ' ').title())
+
+    def _format_additional_fields(self, additional: Dict[str, Any]) -> str:
+        """
+        Format additional fields for display.
+
+        Args:
+            additional: Dictionary of additional fields
+
+        Returns:
+            Formatted string with additional fields
+        """
+        result = ""
+        priority_fields = ['duedate', 'resolutiondate', 'resolution', 'environment',
+                         'timeoriginalestimate', 'timeestimate', 'timespent']
+
+        # Show priority fields first
+        for field_name in priority_fields:
+            if field_name in additional and additional[field_name]:
+                display_name = self._format_field_display_name(field_name)
+                result += f"**{display_name}**: {additional[field_name]}\n"
+
+        # Show other additional fields
+        for field_name, field_value in additional.items():
+            if field_name not in priority_fields and field_value:
+                display_name = self._format_field_display_name(field_name)
+                if isinstance(field_value, list):
+                    result += f"**{display_name}**: {', '.join(str(v) for v in field_value)}\n"
+                else:
+                    result += f"**{display_name}**: {field_value}\n"
+
+        return result
+
     async def _handle_read_issue(self, arguments: Dict[str, Any]) -> List[types.TextContent]:
         """Handle read issue operation."""
         issue_key = arguments.get("issue_key")
@@ -1397,7 +1450,7 @@ class JiraMCPServer:
             issue_manager = IssueManager(jira_client.jira, credentials['site_url'])
             issue = issue_manager.get_issue(issue_key)
 
-            # Format issue details
+            # Format basic issue details
             result = (
                 f"📋 **{issue['key']}**: {issue['summary']}\n\n"
                 f"**Status**: {issue['status']}\n"
@@ -1409,41 +1462,12 @@ class JiraMCPServer:
                 f"**Created**: {issue['created']}\n"
                 f"**Updated**: {issue['updated']}\n"
             )
-            
+
             # Add additional fields dynamically
             if issue.get('additional_fields'):
-                additional = issue['additional_fields']
-                
-                # Common important fields to show first
-                priority_fields = ['duedate', 'resolutiondate', 'resolution', 'environment', 
-                                 'timeoriginalestimate', 'timeestimate', 'timespent']
-                
-                for field_name in priority_fields:
-                    if field_name in additional and additional[field_name]:
-                        # Format field name for display
-                        display_name = field_name.replace('_', ' ').title()
-                        if field_name == 'duedate':
-                            display_name = 'Due Date'
-                        elif field_name == 'resolutiondate':
-                            display_name = 'Resolution Date'
-                        elif field_name == 'timeoriginalestimate':
-                            display_name = 'Original Estimate'
-                        elif field_name == 'timeestimate':
-                            display_name = 'Remaining Estimate'
-                        elif field_name == 'timespent':
-                            display_name = 'Time Spent'
-                        
-                        result += f"**{display_name}**: {additional[field_name]}\n"
-                
-                # Show other additional fields
-                for field_name, field_value in additional.items():
-                    if field_name not in priority_fields and field_value:
-                        display_name = field_name.replace('_', ' ').title()
-                        if isinstance(field_value, list):
-                            result += f"**{display_name}**: {', '.join(str(v) for v in field_value)}\n"
-                        else:
-                            result += f"**{display_name}**: {field_value}\n"
-            
+                result += self._format_additional_fields(issue['additional_fields'])
+
+            # Add description and other details
             result += f"\n**Description**:\n{issue.get('description', 'No description')}\n\n"
 
             if issue.get('labels'):
@@ -1512,6 +1536,10 @@ class JiraMCPServer:
             priority = arguments.get("priority")
             labels = arguments.get("labels")
 
+            # Extract additional fields (like duedate, custom fields, etc.)
+            known_fields = {'operation', 'project_key', 'summary', 'issue_type', 'description', 'assignee', 'priority', 'labels'}
+            additional_fields = {k: v for k, v in arguments.items() if k not in known_fields}
+
             issue = issue_manager.create_issue(
                 project_key=project_key,
                 summary=summary,
@@ -1519,7 +1547,8 @@ class JiraMCPServer:
                 description=description,
                 assignee=assignee,
                 priority=priority,
-                labels=labels
+                labels=labels,
+                **additional_fields
             )
 
             result = (
@@ -1586,7 +1615,7 @@ class JiraMCPServer:
             assignee = arguments.get("assignee")
             priority = arguments.get("priority")
             labels = arguments.get("labels")
-            
+
             # Extract additional fields (like duedate, custom fields, etc.)
             known_fields = {'operation', 'issue_key', 'summary', 'description', 'assignee', 'priority', 'labels'}
             additional_fields = {k: v for k, v in arguments.items() if k not in known_fields}
@@ -2462,11 +2491,16 @@ class JiraMCPServer:
             description = arguments.get("description")
             assignee = arguments.get("assignee")
 
+            # Extract additional fields (like duedate, priority, custom fields, etc.)
+            known_fields = {'operation', 'parent_key', 'summary', 'description', 'assignee'}
+            additional_fields = {k: v for k, v in arguments.items() if k not in known_fields}
+
             subtask = issue_manager.create_subtask(
                 parent_key=parent_key,
                 summary=summary,
                 description=description,
-                assignee=assignee
+                assignee=assignee,
+                **additional_fields
             )
 
             result = (

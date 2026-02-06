@@ -136,8 +136,6 @@ The server will:
 - Store the configuration securely in `~/.config/jira-mcp/workspaces/mycompany.json`
 - Set it as the active workspace (if it's your first)
 
-See **[CONFIGURATION.md](CONFIGURATION.md)** for detailed setup instructions.
-
 ### Managing Workspaces
 
 ```python
@@ -374,12 +372,9 @@ jira-mcp/
 │   ├── jira_client.py        # Jira API client wrapper
 │   └── issue_manager.py      # Issue operations (CRUD, comments, etc.)
 ├── docs/                     # Documentation
-│   ├── implementation.md     # Implementation specification
-│   ├── requirements.md       # Requirements document
-│   └── ...
+│   └── implementation.md     # Implementation specification
 ├── pyproject.toml           # Poetry dependencies & config
 ├── poetry.lock              # Locked dependencies
-├── CONFIGURATION.md         # Detailed configuration guide
 └── README.md                # This file
 
 ~/.config/jira-mcp/          # XDG config directory (created automatically)
@@ -507,10 +502,19 @@ Workspace configurations are stored in `~/.config/jira-mcp/workspaces/*.json` wi
 jira_workspace(operation="add_workspace", ...)
 ```
 
+**Workspace not loading:**
+1. Check file exists: `ls ~/.config/jira-mcp/workspaces/`
+2. Check file permissions: `ls -la ~/.config/jira-mcp/workspaces/`
+3. Validate JSON syntax: `cat ~/.config/jira-mcp/workspaces/myserver.json | python -m json.tool`
+4. Restart MCP server (close and reopen your AI assistant)
+
 **"Authentication failed" error:**
 - Verify your API token is correct
 - Check that your email matches your Atlassian account
 - Ensure the site URL is correct (e.g., `company.atlassian.net`)
+- Verify auth_type matches your Jira instance (Cloud vs Server)
+- For PAT: Ensure token is valid and not expired
+- Test connection: `jira_workspace(operation="validate_workspace", workspace_name="myserver")`
 
 **"Invalid JQL" error:**
 - Test your JQL in Jira's web interface first
@@ -521,6 +525,11 @@ jira_workspace(operation="add_workspace", ...)
 - Verify the file path exists and is readable
 - Check file size limits (Jira defaults to 10MB)
 - Ensure you have attachment permissions in the project
+
+**Multiple workspaces:**
+- Only one workspace can be active at a time
+- Use `switch_workspace` to change between workspaces
+- Active workspace is stored in `~/.config/jira-mcp/active_workspace`
 
 ## 🤝 Contributing
 

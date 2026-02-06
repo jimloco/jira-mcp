@@ -10,6 +10,8 @@ from typing import Any, Dict, List, Optional
 from jira import JIRA
 from jira.exceptions import JIRAError
 
+from .utils import get_user_attribute
+
 # Configure logging
 logger = logging.getLogger(__name__)
 
@@ -35,30 +37,6 @@ class IssueManager:
         """
         self.jira = jira_client
         self.site_url = site_url.rstrip('/')
-
-    def _get_user_attribute(self, user_obj: Any, cloud_attr: str, server_attr: str, default: Any = None) -> Any:
-        """
-        Safely get user attribute that may differ between Cloud and Server.
-
-        Args:
-            user_obj: User object from Jira API
-            cloud_attr: Attribute name in Jira Cloud
-            server_attr: Attribute name in Jira Server/Data Center
-            default: Default value if attribute not found
-
-        Returns:
-            Attribute value or default
-        """
-        if user_obj is None:
-            return default
-        # Try Cloud attribute first
-        if hasattr(user_obj, cloud_attr):
-            return getattr(user_obj, cloud_attr)
-        # Try Server attribute
-        if hasattr(user_obj, server_attr):
-            return getattr(user_obj, server_attr)
-        # Return default
-        return default
 
     def search_issues(
         self,
@@ -412,6 +390,105 @@ class IssueManager:
             logger.error("❌ %s", error_msg)
             raise IssueManagerError(error_msg) from e
 
+    def _format_user(self, user: Any) -> Optional[Dict[str, str]]:
+        """
+        Format user object into dictionary.
+
+        Args:
+            user: JIRA user object
+
+        Returns:
+            User dictionary or None
+        """
+        if not user:
+            return None
+        return {
+            'name': get_user_attribute(user, 'displayName', 'displayName', 'Unknown'),
+            'account_id': get_user_attribute(user, 'accountId', 'name', 'N/A')
+        }
+
+    def _format_field_value(self, field_value: Any) -> Any:
+        """
+        Format a field value based on its type.
+
+        Args:
+            field_value: Field value to format
+
+        Returns:
+            Formatted field value
+        """
+        if hasattr(field_value, 'name'):
+            return field_value.name
+        if isinstance(field_value, (str, int, float, bool)):
+            return field_value
+        if isinstance(field_value, list) and len(field_value) > 0:
+            if hasattr(field_value[0], 'name'):
+                return [item.name for item in field_value]
+            return [str(item) for item in field_value]
+        return str(field_value)
+
+    def _extract_additional_fields(self, fields: Any) -> Dict[str, Any]:
+        """
+        Extract additional fields dynamically from issue.
+
+        Args:
+            fields: JIRA fields object
+
+        Returns:
+            Dictionary of additional fields
+        """
+        skip_fields = {
+            'summary', 'status', 'issuetype', 'project', 'created', 'updated',
+            'assignee', 'reporter', 'priority', 'description', 'labels',
+            'components', 'fixVersions', 'versions', 'comment', 'attachment',
+            'worklog', 'issuelinks', 'subtasks', 'watches', 'votes'
+        }
+
+        additional_fields = {}
+        for field_name in dir(fields):
+            if field_name.startswith('_') or field_name in skip_fields:
+                continue
+
+            try:
+                field_value = getattr(fields, field_name, None)
+                if field_value is None or callable(field_value):
+                    continue
+
+                additional_fields[field_name] = self._format_field_value(field_value)
+            except (AttributeError, TypeError):
+                continue
+
+        return additional_fields
+
+    def _add_full_details(self, issue_data: Dict[str, Any], fields: Any) -> None:
+        """
+        Add full details to issue data.
+
+        Args:
+            issue_data: Issue data dictionary to update
+            fields: JIRA fields object
+        """
+        issue_data['description'] = getattr(fields, 'description', None) or ''
+        issue_data['labels'] = getattr(fields, 'labels', [])
+
+        issue_data['components'] = (
+            [c.name for c in fields.components]
+            if hasattr(fields, 'components') and fields.components
+            else []
+        )
+
+        issue_data['fix_versions'] = (
+            [v.name for v in fields.fixVersions]
+            if hasattr(fields, 'fixVersions') and fields.fixVersions
+            else []
+        )
+
+        issue_data['affected_versions'] = (
+            [v.name for v in fields.versions]
+            if hasattr(fields, 'versions') and fields.versions
+            else []
+        )
+
     def _format_issue(self, issue: Any, full_details: bool = False) -> Dict[str, Any]:
         """
         Format issue data into a dictionary.
@@ -435,105 +512,16 @@ class IssueManager:
             'project': fields.project.key,
             'url': f"{self.site_url}/browse/{issue.key}",
             'created': str(fields.created),
-            'updated': str(fields.updated)
+            'updated': str(fields.updated),
+            'assignee': self._format_user(getattr(fields, 'assignee', None)),
+            'reporter': self._format_user(getattr(fields, 'reporter', None)),
+            'priority': fields.priority.name if hasattr(fields, 'priority') and fields.priority else None,
+            'additional_fields': self._extract_additional_fields(fields)
         }
-
-        # Add assignee info
-        if hasattr(fields, 'assignee') and fields.assignee:
-            issue_data['assignee'] = {
-                'name': self._get_user_attribute(fields.assignee, 'displayName', 'displayName', 'Unknown'),
-                'account_id': self._get_user_attribute(fields.assignee, 'accountId', 'name', 'N/A')
-            }
-        else:
-            issue_data['assignee'] = None
-
-        # Add reporter info
-        if hasattr(fields, 'reporter') and fields.reporter:
-            issue_data['reporter'] = {
-                'name': self._get_user_attribute(fields.reporter, 'displayName', 'displayName', 'Unknown'),
-                'account_id': self._get_user_attribute(fields.reporter, 'accountId', 'name', 'N/A')
-            }
-        else:
-            issue_data['reporter'] = None
-
-        # Add priority
-        if hasattr(fields, 'priority') and fields.priority:
-            issue_data['priority'] = fields.priority.name
-        else:
-            issue_data['priority'] = None
-
-        # Dynamically extract all other fields from the issue
-        # Get all field names from the fields object
-        all_field_names = dir(fields)
-        
-        # Fields to skip (already handled above or internal/complex)
-        skip_fields = {
-            'summary', 'status', 'issuetype', 'project', 'created', 'updated',
-            'assignee', 'reporter', 'priority', 'description', 'labels', 
-            'components', 'fixVersions', 'versions', 'comment', 'attachment',
-            'worklog', 'issuelinks', 'subtasks', 'watches', 'votes'
-        }
-        
-        # Additional metadata dictionary for other fields
-        issue_data['additional_fields'] = {}
-        
-        for field_name in all_field_names:
-            # Skip private attributes, methods, and already-handled fields
-            if field_name.startswith('_') or field_name in skip_fields:
-                continue
-                
-            try:
-                field_value = getattr(fields, field_name, None)
-                
-                # Skip None values and callable methods
-                if field_value is None or callable(field_value):
-                    continue
-                
-                # Handle different field types
-                if hasattr(field_value, 'name'):
-                    # Objects with name attribute (status, priority, etc.)
-                    issue_data['additional_fields'][field_name] = field_value.name
-                elif isinstance(field_value, (str, int, float, bool)):
-                    # Simple types
-                    issue_data['additional_fields'][field_name] = field_value
-                elif isinstance(field_value, list) and len(field_value) > 0:
-                    # Lists - try to extract names if objects
-                    if hasattr(field_value[0], 'name'):
-                        issue_data['additional_fields'][field_name] = [item.name for item in field_value]
-                    else:
-                        issue_data['additional_fields'][field_name] = [str(item) for item in field_value]
-                else:
-                    # Convert to string for other types
-                    issue_data['additional_fields'][field_name] = str(field_value)
-                    
-            except (AttributeError, TypeError):
-                # Skip fields that can't be accessed or converted
-                continue
 
         # Add full details if requested
         if full_details:
-            issue_data['description'] = getattr(fields, 'description', None) or ''
-
-            # Add labels
-            issue_data['labels'] = getattr(fields, 'labels', [])
-
-            # Add components
-            if hasattr(fields, 'components') and fields.components:
-                issue_data['components'] = [c.name for c in fields.components]
-            else:
-                issue_data['components'] = []
-
-            # Add fix versions
-            if hasattr(fields, 'fixVersions') and fields.fixVersions:
-                issue_data['fix_versions'] = [v.name for v in fields.fixVersions]
-            else:
-                issue_data['fix_versions'] = []
-
-            # Add affected versions
-            if hasattr(fields, 'versions') and fields.versions:
-                issue_data['affected_versions'] = [v.name for v in fields.versions]
-            else:
-                issue_data['affected_versions'] = []
+            self._add_full_details(issue_data, fields)
 
         return issue_data
 
@@ -562,8 +550,8 @@ class IssueManager:
                     'id': comment.id,
                     'body': comment.body,
                     'author': {
-                        'name': self._get_user_attribute(comment.author, 'displayName', 'displayName', 'Unknown'),
-                        'account_id': self._get_user_attribute(comment.author, 'accountId', 'name', 'N/A')
+                        'name': get_user_attribute(comment.author, 'displayName', 'displayName', 'Unknown'),
+                        'account_id': get_user_attribute(comment.author, 'accountId', 'name', 'N/A')
                     },
                     'created': str(comment.created),
                     'updated': str(comment.updated)
@@ -606,8 +594,8 @@ class IssueManager:
                 'id': comment.id,
                 'body': comment.body,
                 'author': {
-                    'name': self._get_user_attribute(comment.author, 'displayName', 'displayName', 'Unknown'),
-                    'account_id': self._get_user_attribute(comment.author, 'accountId', 'name', 'N/A')
+                    'name': get_user_attribute(comment.author, 'displayName', 'displayName', 'Unknown'),
+                    'account_id': get_user_attribute(comment.author, 'accountId', 'name', 'N/A')
                 },
                 'created': str(comment.created),
                 'updated': str(comment.updated)
@@ -658,8 +646,8 @@ class IssueManager:
                 'id': comment.id,
                 'body': comment.body,
                 'author': {
-                    'name': self._get_user_attribute(comment.author, 'displayName', 'displayName', 'Unknown'),
-                    'account_id': self._get_user_attribute(comment.author, 'accountId', 'name', 'N/A')
+                    'name': get_user_attribute(comment.author, 'displayName', 'displayName', 'Unknown'),
+                    'account_id': get_user_attribute(comment.author, 'accountId', 'name', 'N/A')
                 },
                 'created': str(comment.created),
                 'updated': str(comment.updated)
@@ -733,8 +721,8 @@ class IssueManager:
                     'mime_type': getattr(attachment, 'mimeType', 'unknown'),
                     'created': str(attachment.created),
                     'author': {
-                        'name': self._get_user_attribute(attachment.author, 'displayName', 'displayName', 'Unknown'),
-                        'account_id': self._get_user_attribute(attachment.author, 'accountId', 'name', 'N/A')
+                        'name': get_user_attribute(attachment.author, 'displayName', 'displayName', 'Unknown'),
+                        'account_id': get_user_attribute(attachment.author, 'accountId', 'name', 'N/A')
                     },
                     'content_url': attachment.content
                 }
@@ -782,8 +770,8 @@ class IssueManager:
                 'mime_type': getattr(attachment, 'mimeType', 'unknown'),
                 'created': str(attachment.created),
                 'author': {
-                    'name': self._get_user_attribute(attachment.author, 'displayName', 'displayName', 'Unknown'),
-                    'account_id': self._get_user_attribute(attachment.author, 'accountId', 'name', 'N/A')
+                    'name': get_user_attribute(attachment.author, 'displayName', 'displayName', 'Unknown'),
+                    'account_id': get_user_attribute(attachment.author, 'accountId', 'name', 'N/A')
                 },
                 'content_url': attachment.content
             }
@@ -960,7 +948,8 @@ class IssueManager:
         parent_key: str,
         summary: str,
         description: Optional[str] = None,
-        assignee: Optional[str] = None
+        assignee: Optional[str] = None,
+        **kwargs: Any
     ) -> Dict[str, Any]:
         """
         Create a subtask under a parent issue.
@@ -970,6 +959,7 @@ class IssueManager:
             summary: Subtask summary/title
             description: Optional subtask description
             assignee: Optional assignee account ID
+            **kwargs: Additional custom fields
 
         Returns:
             Created subtask dictionary
@@ -997,6 +987,9 @@ class IssueManager:
 
             if assignee:
                 fields['assignee'] = {'accountId': assignee}
+
+            # Add any additional fields
+            fields.update(kwargs)
 
             # Create the subtask
             subtask = self.jira.create_issue(fields=fields)
@@ -1045,8 +1038,8 @@ class IssueManager:
                 # Add assignee if present
                 if hasattr(subtask.fields, 'assignee') and subtask.fields.assignee:
                     subtask_data['assignee'] = {
-                        'name': self._get_user_attribute(subtask.fields.assignee, 'displayName', 'displayName', 'Unknown'),
-                        'account_id': self._get_user_attribute(subtask.fields.assignee, 'accountId', 'name', 'N/A')
+                        'name': get_user_attribute(subtask.fields.assignee, 'displayName', 'displayName', 'Unknown'),
+                        'account_id': get_user_attribute(subtask.fields.assignee, 'accountId', 'name', 'N/A')
                     }
                 else:
                     subtask_data['assignee'] = None
