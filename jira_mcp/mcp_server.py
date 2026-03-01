@@ -189,6 +189,18 @@ class JiraMCPServer:
                         "Subtask Operations:\n"
                         "- create_subtask: Create a subtask under a parent issue\n"
                         "- list_subtasks: Get all subtasks for an issue\n\n"
+                        "**Jira Markdown (Wiki Markup)**: ALL text content written to Jira (descriptions, comments) MUST use "
+                        "Jira wiki markup syntax — NOT standard Markdown, GitHub Markdown, or any other format.\n"
+                        "Key Jira wiki markup syntax:\n"
+                        "- Headings: h1. h2. h3. (not # ## ###)\n"
+                        "- Bold: *bold* (not **bold**)\n"
+                        "- Italic: _italic_ (not *italic*)\n"
+                        "- Bullet list: * item (not - item)\n"
+                        "- Numbered list: # item (not 1. item)\n"
+                        "- Code block: {code}...{code} or {code:python}...{code} (not ```)\n"
+                        "- Inline code: {{monospace}} (not `backticks`)\n"
+                        "- Links: [text|https://url] (not [text](url))\n"
+                        "- Horizontal rule: ---- (not ---)\n\n"
                         "**Additional Fields**: For create/update operations, you can pass ANY Jira field as additional parameters:\n"
                         "- Standard fields: duedate='2026-04-30', environment='Production', resolution='Fixed'\n"
                         "- Custom fields: customfield_12001='value', customfield_24320='Yes'\n"
@@ -229,7 +241,7 @@ class JiraMCPServer:
                             },
                             "description": {
                                 "type": "string",
-                                "description": "Issue description (for create, update)"
+                                "description": "Issue description (for create, update). MUST use Jira wiki markup syntax (e.g. h2. Heading, *bold*, _italic_, {code}...{code}, [text|url]) — NOT standard Markdown."
                             },
                             "issue_type": {
                                 "type": "string",
@@ -254,7 +266,7 @@ class JiraMCPServer:
                             },
                             "comment": {
                                 "type": "string",
-                                "description": "Optional comment (for transition)"
+                                "description": "Optional comment (for transition). MUST use Jira wiki markup syntax — NOT standard Markdown."
                             },
                             "max_results": {
                                 "type": "integer",
@@ -262,7 +274,7 @@ class JiraMCPServer:
                             },
                             "body": {
                                 "type": "string",
-                                "description": "Comment text body (for add_comment, update_comment)"
+                                "description": "Comment text body (for add_comment, update_comment). MUST use Jira wiki markup syntax (e.g. h2. Heading, *bold*, _italic_, {code}...{code}, [text|url]) — NOT standard Markdown."
                             },
                             "comment_id": {
                                 "type": "string",

@@ -7,6 +7,7 @@ error handling, and logging.
 """
 
 import logging
+import requests
 from typing import Any, Dict, Optional
 from jira import JIRA
 from jira.exceptions import JIRAError
