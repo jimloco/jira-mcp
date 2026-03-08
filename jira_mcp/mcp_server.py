@@ -1894,7 +1894,7 @@ class JiraMCPServer:
                 result_lines.append(f"**Comment {comment['id']}** by {comment['author']['name']}")
                 result_lines.append(f"  └─ Created: {comment['created']}")
                 result_lines.append(f"  └─ Updated: {comment['updated']}")
-                result_lines.append(f"  └─ Body: {comment['body'][:200]}{'...' if len(comment['body']) > 200 else ''}")
+                result_lines.append(f"  └─ Body: {comment['body']}")
                 result_lines.append("")
 
             result_lines.append(f"**Total comments**: {len(comments)}")
