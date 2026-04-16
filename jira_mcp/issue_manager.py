@@ -174,8 +174,8 @@ class IssueManager:
             if labels:
                 fields['labels'] = labels
 
-            # Add any additional custom fields
-            fields.update(kwargs)
+            # Add any additional custom fields (normalize object-type fields first)
+            fields.update(self._normalize_extra_fields(kwargs))
 
             # Create the issue
             issue = self.jira.create_issue(fields=fields)
@@ -241,8 +241,8 @@ class IssueManager:
             if labels is not None:
                 fields['labels'] = labels
 
-            # Add any additional custom fields
-            fields.update(kwargs)
+            # Add any additional custom fields (normalize object-type fields first)
+            fields.update(self._normalize_extra_fields(kwargs))
 
             # Update the issue
             issue.update(fields=fields)
@@ -389,6 +389,21 @@ class IssueManager:
             error_msg = f"Unexpected error getting transitions: {str(e)}"
             logger.error("❌ %s", error_msg)
             raise IssueManagerError(error_msg) from e
+
+    def _normalize_extra_fields(self, kwargs: Dict[str, Any]) -> Dict[str, Any]:
+        """
+        Normalize extra kwargs so object-type Jira fields get the structure the API expects.
+
+        For example, passing parent="ENG-342" becomes parent={"key": "ENG-342"}.
+        """
+        normalized: Dict[str, Any] = {}
+        key_fields = {'parent', 'epic'}
+        for field, value in kwargs.items():
+            if field in key_fields and isinstance(value, str):
+                normalized[field] = {'key': value}
+            else:
+                normalized[field] = value
+        return normalized
 
     def _format_user(self, user: Any) -> Optional[Dict[str, str]]:
         """
