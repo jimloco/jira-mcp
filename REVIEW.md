@@ -74,6 +74,16 @@ Catastrophic backtracking (ReDoS) can be triggered by a single crafted pattern.
 
 ## Reliability — Blocking
 
+### External dependency failures must be classified and retried appropriately
+Flag any call to an external service (HTTP client, cache, queue, third-party API) where
+all failure modes — transient (429, 5xx, network timeout) and permanent (4xx, semantic
+errors) — are collapsed into the same return value or exception type. Transient failures
+must be retried with backoff (exponential + jitter) and must respect `Retry-After` headers
+when present. Permanent failures must be raised or returned distinctly from semantic
+no-op results (e.g. "lock already held" vs "cache is down"). A `None` return that means
+both "resource unavailable" and "dependency failed" is a reliability bug — callers cannot
+distinguish and will silently skip work during outages.
+
 ### Exceptions must never be silently swallowed
 Flag any `except` block whose body is only `pass`, `...`, or a bare `return` with no
 log statement. Every caught exception must emit at minimum a warning-level log with
@@ -162,6 +172,14 @@ Flag any lock whose key is scoped too broadly — e.g., a per-project lock used 
 serialize operations that should be able to run concurrently per sub-resource
 (workspace, tenant, file). A too-broad lock key causes concurrent operations to
 silently no-op while the API reports success for all of them.
+
+### Lock keys must be consistent across all code paths for the same resource
+Flag any distributed or advisory lock where the key string is constructed inline
+(via f-string or concatenation) at more than one call site for the same logical
+resource. If an API trigger endpoint and a connector self-acquire path construct
+the key differently — even with the same intended semantics — they take different
+locks, allowing concurrent execution and seq/log corruption. All lock key construction
+for a given resource must be centralised in a single shared helper or constant.
 
 ### Composite scoring functions must apply all signals consistently
 Flag any multi-pass scoring or ranking function where a refinement pass recomputes
